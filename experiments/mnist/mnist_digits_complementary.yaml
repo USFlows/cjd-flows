@@ -78,21 +78,11 @@ experiments:
           nonlinearity:
             __eval__: tune.choice([torch.nn.ReLU()])
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
-            device: cpu
-            p: 
-              __eval__: float("1")
-            loc:
+            __object__: pyro.distributions.Normal
+            loc: 
               __eval__: torch.zeros([16, 7, 7]).to("cpu")
-            norm_distribution:
-              __object__: src.usflows.distributions.GammaMM
-              concentration:
-                __eval__: torch.rand([20]).to("cpu") * 75
-              rate:
-                __eval__: torch.rand([20]).to("cpu")
-              mixture_weights:
-                __eval__: torch.ones([20]).to("cpu") / 20
-              device: cpu
+            scale: 
+              __eval__: torch.ones([16, 7, 7]).to("cpu")
   -
     __overwrites__: *exp_rad_logN
     name: mnist1

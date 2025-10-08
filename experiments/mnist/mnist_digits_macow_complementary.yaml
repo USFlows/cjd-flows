@@ -56,7 +56,7 @@ experiments:
           prior_scale: 1.0
           coupling_blocks: 
             __eval__: tune.choice([5])
-          lu_transform: 1
+          lu_transform: 0
           householder: 0
           conditioner_cls:
             __class__: src.usflows.networks.ConvNet2D
@@ -74,7 +74,7 @@ experiments:
             gating: 
               __eval__: tune.choice([True])
           in_dims: [16, 7, 7]
-          affine_conjugation: true
+          affine_conjugation: false
           nonlinearity:
             __eval__: tune.choice([torch.nn.ReLU()])
           base_distribution:
