@@ -26,7 +26,7 @@ experiments:
         class: 
           __class__: src.explib.datasets.MnistSplit
         params:
-          dataloc: /home/faried/Projects/USFlows/data/mnist
+          dataloc: /home/mustafa.yalciner/repos/USFlows/data/mnist
           space_to_depth_factor: 4
           device: cuda
       epochs: 200000

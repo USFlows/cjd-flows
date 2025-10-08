@@ -27,7 +27,7 @@ experiments:
           __class__: src.usflows.explib.datasets.FashionMnistSplit
         params:
           space_to_depth_factor: 4
-          dataloc: /home/faried/Projects/USFlows/data/fashion
+          dataloc: /home/mustafa.yalciner/repos/USFlows/data/fashion
           label: 0
       epochs: &epochs 200000
       patience: &patience 1
