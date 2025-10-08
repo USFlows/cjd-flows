@@ -1,20 +1,20 @@
 ---
-__object__: src.explib.base.ExperimentCollection
-name: mnist_gigits_logN
+__object__: src.usflows.explib.base.ExperimentCollection
+name: fashion_ablation_macow
 experiments:
   - &exp_rad_logN
-    __object__: src.explib.hyperopt.HyperoptExperiment
-    name: mnist0
-    device: cpu
+    __object__: src.usflows.explib.hyperopt.HyperoptExperiment
+    name: cfair_full_normal
     skip: false
+    device: cuda
     scheduler: &scheduler 
       __object__: ray.tune.schedulers.ASHAScheduler
       max_t: 1000000
       grace_period: 1000000
       reduction_factor: 2
     num_hyperopt_samples: &num_hyperopt_samples 1
-    gpus_per_trial: &gpus_per_trial 0
-    cpus_per_trial: &cpus_per_trial 16
+    gpus_per_trial: &gpus_per_trial 1
+    cpus_per_trial: &cpus_per_trial 1
     tuner_params: &tuner_params
       metric: val_loss
       mode: min
@@ -23,23 +23,22 @@ experiments:
         images: false
         "image_shape": [28, 28]
       dataset: &dataset
-        class: 
-          __class__: src.explib.datasets.MnistSplit
+        class:
+          __class__: src.usflow.explib.datasets.FashionMnistSplit
         params:
-          dataloc: /home/faried/Projects/USFlows/data/mnist
           space_to_depth_factor: 4
-          device: cpu
-          digit: 0
-      epochs: 200000
-      patience: 5
-      batch_size: 
+          dataloc: /home/faried/Projects/USFlows/data/fashion
+          label: 0
+      epochs: &epochs 200000
+      patience: &patience 1
+      batch_size: &batch_size 
         __eval__: tune.choice([32])
-      optim_cfg: 
+      optim_cfg: &optim 
         optimizer:
           __class__: src.usflows.sophia.SophiaG
         params:
           lr: 
-            __eval__: 1e-4
+            __eval__: 1e-3
           weight_decay: 0.0
       
       model_cfg:
@@ -55,7 +54,7 @@ experiments:
             high: 0.01
           prior_scale: 1.0
           coupling_blocks: 
-            __eval__: tune.choice([5])
+            __eval__: tune.choice([10])
           lu_transform: 1
           householder: 0
           conditioner_cls:
@@ -79,80 +78,72 @@ experiments:
             __eval__: tune.choice([torch.nn.ReLU()])
           base_distribution:
             __object__: src.usflows.distributions.RadialDistribution
-            device: cpu
+            device: cuda
             p: 
               __eval__: float("1")
             loc:
-              __eval__: torch.zeros([16, 7, 7]).to("cpu")
+              __eval__: torch.zeros([16, 7, 7]).to("cuda")
             norm_distribution:
               __object__: src.usflows.distributions.GammaMM
               concentration:
-                __eval__: torch.rand([20]).to("cpu") * 75
+                __eval__: torch.rand([20]).to("cuda") * 75
               rate:
-                __eval__: torch.rand([20]).to("cpu")
+                __eval__: torch.rand([20]).to("cuda")
               mixture_weights:
-                __eval__: torch.ones([20]).to("cpu") / 20
-              device: cpu
-  -
-    __overwrites__: *exp_rad_logN
-    name: mnist1
+                __eval__: torch.ones([20]).to("cuda") / 20
+              device: cuda
+  - __overwrites__: *exp_rad_logN
+    name: fashion1_radial_logN
     trial_config:
-      dataset:
+      dataset: 
         params:
-          digit: 1
-  -
-    __overwrites__: *exp_rad_logN
-    name: mnist2
+          label: 1
+  - __overwrites__: *exp_rad_logN
+    name: fashion2_radial_logN
     trial_config:
-      dataset:
+      dataset: 
         params:
-          digit: 2
-  -
-    __overwrites__: *exp_rad_logN
-    name: mnist3
+          label: 2
+  - __overwrites__: *exp_rad_logN
+    name: fashion3_radial_logN
     trial_config:
-      dataset:
+      dataset: 
         params:
-          digit: 3
-  -
-    __overwrites__: *exp_rad_logN
-    name: mnist4
+          label: 3
+  - __overwrites__: *exp_rad_logN
+    name: fashion4_radial_logN
     trial_config:
-      dataset:        
-        params:   
-          digit: 4
-  -
-    __overwrites__: *exp_rad_logN
-    name: mnist5
-    trial_config:
-      dataset:
+      dataset: 
         params:
-          digit: 5
-  -
-    __overwrites__: *exp_rad_logN
-    name: mnist6
-    trial_config:
-      dataset:
+          label: 4
+  - __overwrites__: *exp_rad_logN
+    name: fashion5_radial_logN
+    trial_config: 
+      dataset: 
         params:
-          digit: 6
-  -
-    __overwrites__: *exp_rad_logN
-    name: mnist7
+          label: 5
+  - __overwrites__: *exp_rad_logN
+    name: fashion6_radial_logN
     trial_config:
-      dataset:
-        params: 
-          digit: 7
-  -
-    __overwrites__: *exp_rad_logN
-    name: mnist8
-    trial_config:
-      dataset:
+      dataset: 
         params:
-          digit: 8
-  -
-    __overwrites__: *exp_rad_logN
-    name: mnist9
+          label: 6        
+  - __overwrites__: *exp_rad_logN
+    name: fashion7_radial_logN
     trial_config:
-      dataset:
+      dataset: 
         params:
-          digit: 9
+          label: 7
+  - __overwrites__: *exp_rad_logN
+    name: fashion8_radial_logN
+    trial_config:
+      dataset: 
+        params:
+          label: 8
+  - __overwrites__: *exp_rad_logN
+    name: fashion9_radial_logN
+    trial_config:
+      dataset: 
+        params:
+          label: 9
+  
