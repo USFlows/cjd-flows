@@ -6,7 +6,7 @@ experiments:
     __object__: src.usflows.explib.hyperopt.HyperoptExperiment
     name: cfair_full_radial_logN
     skip: false
-    device: cpu
+    device: cuda
     scheduler: &scheduler 
       __object__: ray.tune.schedulers.ASHAScheduler
       max_t: 1000000
@@ -80,9 +80,9 @@ experiments:
           base_distribution:
             __object__: pyro.distributions.Normal
             loc:
-              __eval__: torch.zeros([16, 7, 7]).to("cpu")
+              __eval__: torch.zeros([16, 7, 7]).to("cuda")
             scale:
-              __eval__: torch.ones([1]).to("cpu") 
+              __eval__: torch.ones([1]).to("cuda") 
   - __overwrites__: *exp_rad_logN
     name: fashion1_radial_logN
     trial_config:

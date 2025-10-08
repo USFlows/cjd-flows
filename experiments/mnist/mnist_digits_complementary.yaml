@@ -5,7 +5,7 @@ experiments:
   - &exp_rad_logN
     __object__: src.explib.hyperopt.HyperoptExperiment
     name: mnist0
-    device: cpu
+    device: cuda
     skip: false
     scheduler: &scheduler 
       __object__: ray.tune.schedulers.ASHAScheduler
@@ -13,7 +13,7 @@ experiments:
       grace_period: 1000000
       reduction_factor: 2
     num_hyperopt_samples: &num_hyperopt_samples 1
-    gpus_per_trial: &gpus_per_trial 0
+    gpus_per_trial: &gpus_per_trial 1
     cpus_per_trial: &cpus_per_trial 16
     tuner_params: &tuner_params
       metric: val_loss
@@ -28,7 +28,7 @@ experiments:
         params:
           dataloc: /home/faried/Projects/USFlows/data/mnist
           space_to_depth_factor: 4
-          device: cpu
+          device: cuda
           digit: 0
       epochs: 200000
       patience: 5
@@ -80,9 +80,9 @@ experiments:
           base_distribution:
             __object__: pyro.distributions.Normal
             loc: 
-              __eval__: torch.zeros([16, 7, 7]).to("cpu")
+              __eval__: torch.zeros([16, 7, 7]).to("cuda")
             scale: 
-              __eval__: torch.ones([16, 7, 7]).to("cpu")
+              __eval__: torch.ones([16, 7, 7]).to("cuda")
   -
     __overwrites__: *exp_rad_logN
     name: mnist1
