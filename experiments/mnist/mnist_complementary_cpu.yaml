@@ -14,7 +14,7 @@ experiments:
       reduction_factor: 2
     num_hyperopt_samples: &num_hyperopt_samples 1
     gpus_per_trial: &gpus_per_trial 0
-    cpus_per_trial: &cpus_per_trial 8
+    cpus_per_trial: &cpus_per_trial 50
     tuner_params: &tuner_params
       metric: val_loss
       mode: min
