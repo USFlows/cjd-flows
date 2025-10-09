@@ -26,7 +26,7 @@ experiments:
         class:
           __class__: src.usflows.explib.datasets.MnistSplit
         params:
-          dataloc: /home/mustafa/repos/VeriFlow/data/mnist
+          dataloc: /home/mustafa.yalciner/repos/USFlows/data/mnist
           space_to_depth_factor: 4
           device: cpu
       epochs: 200000
