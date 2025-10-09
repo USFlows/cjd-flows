@@ -7,8 +7,7 @@ experiments:
     name: cfair_full_radial_logN
     skip: true
     device: cuda
-    skip: true
-    scheduler: &scheduler 
+    scheduler: &scheduler
       __object__: ray.tune.schedulers.ASHAScheduler
       max_t: 1000000
       grace_period: 1000000
@@ -28,7 +27,7 @@ experiments:
           __class__: src.usflows.explib.datasets.Cifar10Split
         params:
           space_to_depth_factor: 4
-          dataloc: /home/faried/Projects/USFlows/data/cifar10
+          dataloc: /home/mustafa.yalciner/repos/USFlows/data/cifar10
 
       epochs: &epochs 200000
       patience: &patience 1
