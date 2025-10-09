@@ -1,14 +1,12 @@
 ---
-__object__: src.explib.base.ExperimentCollection
+__object__: src.usflows.explib.base.ExperimentCollection
 name: fashion_ablation
 experiments:
   - &exp_rad_logN
-    __object__: src.explib.hyperopt.HyperoptExperiment
+    __object__: src.usflows.explib.hyperopt.HyperoptExperiment
     name: cfair_full_radial_logN
-    skip: true
     device: cuda
-    skip: true
-    scheduler: &scheduler 
+    scheduler: &scheduler
       __object__: ray.tune.schedulers.ASHAScheduler
       max_t: 1000000
       grace_period: 1000000
@@ -25,7 +23,7 @@ experiments:
         "image_shape": [28, 28]
       dataset: &dataset
         class:
-          __class__: src.explib.datasets.Cifar10Split
+          __class__: src.usflows.explib.datasets.Cifar10Split
         params:
           space_to_depth_factor: 4
           dataloc: /home/mustafa.yalciner/repos/USFlows/data/cifar10
@@ -96,19 +94,20 @@ experiments:
           params:
             lu_transform: 0
             affine_conjugation: false
-            base_distribution:
-              __object__: src.usflows.distributions.RadialDistribution
-              device: cuda
-              p: 
-                __eval__: float("1")
-              loc:
-                __eval__: torch.zeros([48, 8, 8]).to("cuda")
-              norm_distribution:
-                __exact__: 
-                  __object__: src.usflows.distributions.LogNormal
-                  loc:
-                    __eval__: torch.ones([1]).to("cuda") * 6
-                  scale:
-                    __eval__: torch.ones([1]).to("cuda") * .35
-                  device: cuda
-            
+            __exact__:
+              base_distribution:
+                __object__: src.usflows.distributions.RadialDistribution
+                device: cuda
+                p:
+                  __eval__: float("1")
+                loc:
+                  __eval__: torch.zeros([48, 8, 8]).to("cuda")
+                norm_distribution:
+                  __exact__:
+                    __object__: src.usflows.distributions.LogNormal
+                    loc:
+                      __eval__: torch.ones([1]).to("cuda") * 6
+                    scale:
+                      __eval__: torch.ones([1]).to("cuda") * .35
+                    device: cuda
+
