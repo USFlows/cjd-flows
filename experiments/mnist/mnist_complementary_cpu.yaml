@@ -1,0 +1,111 @@
+---
+__object__: src.usflows.explib.base.ExperimentCollection
+name: mnist_ablation
+experiments:
+  - &exp_rad_logN
+    __object__: src.usflows.explib.hyperopt.HyperoptExperiment
+    name: mnist_full_radial_logN
+    device: cpu
+    skip: True
+    scheduler: &scheduler
+      __object__: ray.tune.schedulers.ASHAScheduler
+      max_t: 1000000
+      grace_period: 1000000
+      reduction_factor: 2
+    num_hyperopt_samples: &num_hyperopt_samples 1
+    gpus_per_trial: &gpus_per_trial 0
+    cpus_per_trial: &cpus_per_trial 8
+    tuner_params: &tuner_params
+      metric: val_loss
+      mode: min
+    trial_config:
+      logging:
+        images: false
+        "image_shape": [28, 28]
+      dataset: &dataset
+        class:
+          __class__: src.usflows.explib.datasets.MnistSplit
+        params:
+          dataloc: /home/mustafa/repos/VeriFlow/data/mnist
+          space_to_depth_factor: 4
+          device: cpu
+      epochs: 200000
+      patience: 5
+      batch_size:
+        __eval__: tune.choice([32])
+      optim_cfg:
+        optimizer:
+          __class__: src.usflows.sophia.SophiaG
+        params:
+          lr:
+            __eval__: 1e-3
+          weight_decay: 0.0
+
+      model_cfg:
+        type:
+          __class__: src.usflows.flows.USFlow
+        params:
+          soft_training:
+            __eval__: tune.choice([False])
+          training_noise_prior:
+            __object__: pyro.distributions.Uniform
+            low:
+              __eval__: 1e-20
+            high: 0.01
+          prior_scale: 1.0
+          coupling_blocks:
+            __eval__: tune.choice([15])
+          lu_transform: 1
+          householder: 0
+          conditioner_cls:
+            __class__: src.usflows.networks.ConvNet2D
+          conditioner_args:
+            c_in: 16
+            c_hidden:
+              __eval__: tune.choice([32])
+            num_layers:
+              __eval__: tune.choice([3])
+            padding: same
+            kernel_size: 3
+            normalize_layers:
+              __eval__: tune.choice([True])
+            gating:
+              __eval__: tune.choice([True])
+          in_dims: [16, 7, 7]
+          affine_conjugation: true
+          nonlinearity:
+            __eval__: tune.choice([torch.nn.ReLU()])
+          base_distribution:
+            __object__: pyro.distributions.Normal
+            loc:
+              __eval__: torch.zeros([16, 7, 7]).to("cpu")
+            scale:
+              __eval__: torch.ones([16, 7, 7]).to("cpu")
+  - &exp_normal
+    __overwrites__: *exp_rad_logN
+    name: mnist_full_MACow
+    skip: false
+    trial_config:
+      optim_cfg:
+        params:
+          lr:
+            __eval__: 1e-5
+      model_cfg:
+          params:
+            lu_transform: 0
+            affine_conjugation: false
+            base_distribution:
+              __exact__:
+                __object__: src.usflows.distributions.RadialDistribution
+                device: cpu
+                p:
+                  __eval__: float("1")
+                loc:
+                  __eval__: torch.zeros([16, 7, 7]).to("cpu")
+                norm_distribution:
+                  __object__: src.usflows.distributions.LogNormal
+                  loc:
+                    __eval__: torch.ones([1]).to("cpu") * 6
+                  scale:
+                    __eval__: torch.ones([1]).to("cpu") * .35
+                  device: cpu
