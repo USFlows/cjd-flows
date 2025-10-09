@@ -1,9 +1,9 @@
 ---
-__object__: src.explib.base.ExperimentCollection
+__object__: src.usflows.explib.base.ExperimentCollection
 name: mnist_ablation
 experiments:
   - &exp_rad_logN
-    __object__: src.explib.hyperopt.HyperoptExperiment
+    __object__: src.usflows.explib.hyperopt.HyperoptExperiment
     name: mnist_full_radial_logN
     device: cuda
     skip: False
@@ -24,7 +24,7 @@ experiments:
         "image_shape": [28, 28]
       dataset: &dataset
         class: 
-          __class__: src.explib.datasets.MnistSplit
+          __class__: src.usflows.explib.datasets.MnistSplit
         params:
           dataloc: /home/faried/Projects/USFlows/data/mnist
           space_to_depth_factor: 4
@@ -96,16 +96,17 @@ experiments:
             lu_transform: 0
             affine_conjugation: false
             base_distribution:
-              __object__: src.usflows.distributions.RadialDistribution
-              device: cuda
-              p: 
-                __eval__: float("1")
-              loc:
-                __eval__: torch.zeros([16, 7, 7]).to("cuda")
-              norm_distribution:
-                __object__: src.usflows.distributions.LogNormal
-                loc:
-                  __eval__: torch.ones([1]).to("cuda") * 6
-                scale:
-                  __eval__: torch.ones([1]).to("cuda") * .35
+              __exact__:
+                __object__: src.usflows.distributions.RadialDistribution
                 device: cuda
+                p: 
+                  __eval__: float("1")
+                loc:
+                  __eval__: torch.zeros([16, 7, 7]).to("cuda")
+                norm_distribution:
+                  __object__: src.usflows.distributions.LogNormal
+                  loc:
+                    __eval__: torch.ones([1]).to("cuda") * 6
+                  scale:
+                    __eval__: torch.ones([1]).to("cuda") * .35
+                  device: cuda
