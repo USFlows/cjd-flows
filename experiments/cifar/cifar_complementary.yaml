@@ -5,6 +5,7 @@ experiments:
   - &exp_rad_logN
     __object__: src.usflows.explib.hyperopt.HyperoptExperiment
     name: cfair_full_radial_logN
+    skip: true
     device: cuda
     scheduler: &scheduler
       __object__: ray.tune.schedulers.ASHAScheduler
