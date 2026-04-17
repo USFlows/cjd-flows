@@ -3,7 +3,6 @@
 *.pkl
 *.pt
 *.png
-*.svg
 *.jpg
 #
 .idea
