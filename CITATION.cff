@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "CJD-Flows"
+version: "0.1.0"
+doi: 10.1609/aaai.v40i33.40030
+url: "https://ojs.aaai.org/index.php/AAAI/article/view/40030"
+repository-code: "https://github.com/aai-institute/VeriFlow"
+license: "MIT"
+authors:
+  - family-names: "Zaid"
+    given-names: "Faried Abu"
+  - family-names: "Neider"
+    given-names: "Daniel"
+  - family-names: "Yalciner"
+    given-names: "Mustafa"
+preferred-citation:
+  type: article
+  title: "VeriFlow: Modeling Distributions for Neural Network Verification"
+  journal: "Proceedings of the AAAI Conference on Artificial Intelligence"
+  year: 2026
+  volume: 40
+  issue: 33
+  start: 28050
+  end: 28058
+  doi: 10.1609/aaai.v40i33.40030
+  url: "https://ojs.aaai.org/index.php/AAAI/article/view/40030"
+  authors:
+    - family-names: "Zaid"
+      given-names: "Faried Abu"
+    - family-names: "Neider"
+      given-names: "Daniel"
+    - family-names: "Yalciner"
+      given-names: "Mustafa"

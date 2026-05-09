@@ -4,15 +4,44 @@ CJD-Flows is a Python library for building and evaluating flow-based density est
 
 The library is designed for applications that benefit from stable training, exact likelihoods, and predictable latent level-set geometry.
 
-If you use this library, please cite:
+## Used libraries
+
+![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
+![Pyro](https://img.shields.io/badge/Pyro-Flow%20Modeling-4B8BBE)
+![NumPy](https://img.shields.io/badge/NumPy-013243?logo=numpy&logoColor=white)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-F7931E?logo=scikitlearn&logoColor=white)
+![ONNX](https://img.shields.io/badge/ONNX-005CED?logo=onnx&logoColor=white)
+
+## Citation
+
+If you use this library, please cite the VeriFlow paper:
+
+> Zaid, F. A., Neider, D., and Yalciner, M. (2026). VeriFlow: Modeling Distributions for Neural Network Verification. *Proceedings of the AAAI Conference on Artificial Intelligence*, 40(33), 28050-28058. https://doi.org/10.1609/aaai.v40i33.40030
+
+GitHub citation support and downloadable formats:
+
+- [`CITATION.cff`](CITATION.cff) (for GitHub's "Cite this repository" widget)
+- [`CITATION.bib`](CITATION.bib) (downloadable BibTeX)
+
+<details>
+<summary>BibTeX</summary>
 
 ```bibtex
-@article{Zaid_Neider_Yalçıner_2026, title={VeriFlow: Modeling Distributions for Neural Network Verification}, volume={40}, url={https://ojs.aaai.org/index.php/AAAI/article/view/40030}, DOI={10.1609/aaai.v40i33.40030}, abstractNote={Formal verification has emerged as a promising method to ensure the safety and reliability of neural networks.
-However, many relevant properties, such as fairness or global robustness, pertain to the entire input space. If one applies verification techniques naively, the neural network is checked even on inputs that do not occur in the real world and have no meaning.
-To tackle this shortcoming, we propose the VeriFlow architecture as a flow-based density model tailored to allow any verification approach to restrict its search to some data distribution of interest.
-We argue that our architecture is particularly well suited for this purpose because of two major properties. First, we show that the transformation that is defined by our model is piecewise affine. Therefore, the model allows the usage of verifiers based on constraint solving with linear arithmetic.
-Second, upper density level sets (UDL) of the data distribution are definable via linear constraints in the latent space. As a consequence, representations of UDLs specified by a given probability are effectively computable in the latent space. This property allows for effective verification with a fine-grained, probabilistically interpretable control of how (a-)typical the inputs subject to verification are.}, number={33}, journal={Proceedings of the AAAI Conference on Artificial Intelligence}, author={Zaid, Faried Abu and Neider, Daniel and Yalçıner, Mustafa}, year={2026}, month={Mar.}, pages={28050-28058} }
+@article{Zaid_Neider_Yalciner_2026,
+  title   = {VeriFlow: Modeling Distributions for Neural Network Verification},
+  author  = {Zaid, Faried Abu and Neider, Daniel and Yal{\c{c}}iner, Mustafa},
+  journal = {Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume  = {40},
+  number  = {33},
+  pages   = {28050--28058},
+  year    = {2026},
+  month   = mar,
+  doi     = {10.1609/aaai.v40i33.40030},
+  url     = {https://ojs.aaai.org/index.php/AAAI/article/view/40030}
+}
 ```
+
+</details>
 
 ## Core features
 
