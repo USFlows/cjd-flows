@@ -67,7 +67,8 @@ The evaluation module in `src/usflows/explib/eval.py` is tailored to radial-base
 
 - norm-distribution diagnostics (KS, Wasserstein, PP/QQ/KDE),
 - radiality diagnostics (sign symmetry and simplex-uniformity tests),
-- calibration-oriented latent-space analysis.
+- calibration-oriented latent-space analysis,
+- fine-grained mismatch diagnostics that help distinguish over- vs. under-approximation of density level sets.
 
 ## Installation
 
@@ -89,6 +90,8 @@ One current use case is verification with distribution-aware input restrictions:
 - define latent upper density level sets (UDLs),
 - map these sets through the flow to input-space constraints,
 - verify properties (e.g., robustness/fairness) over likely inputs.
+
+For verification workflows, the library also provides simplification methods that transform trained flow models into verifier-friendly fully connected or convolutional network forms to maximize compatibility with existing tools.
 
 This turns flow density estimates into practically usable constraints for symbolic and abstract verification pipelines.
 
