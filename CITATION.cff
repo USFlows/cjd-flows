@@ -1,11 +1,11 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata below."
 title: "CJD-Flows"
-version: "0.1.0"
+version: "0.9.0"
 doi: 10.1609/aaai.v40i33.40030
 url: "https://ojs.aaai.org/index.php/AAAI/article/view/40030"
 repository-code: "https://github.com/aai-institute/VeriFlow"
-license: "MIT"
+license: "BSD-3-Clause"
 authors:
   - family-names: "Zaid"
     given-names: "Faried Abu"
