@@ -1031,8 +1031,10 @@ class JetConditioner(nn.Module):
     attention keys. Sequence length is still fixed at construction.
 
     Note: unlike ReLU ConvNets, this network is *not* piecewise affine
-    (softmax attention, GELU, LayerNorm are smooth). Intended for density
-    estimation / anomaly detection rather than piecewise-affine verification.
+    (softmax attention, GELU, LayerNorm are smooth), so exact SMT/MILP-based
+    verification does not apply. Abstract-interpretation verifiers (e.g.
+    alpha-beta-CROWN) can still bound transformer architectures; the network
+    is also well suited for density estimation and anomaly detection.
     """
 
     def __init__(

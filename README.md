@@ -105,10 +105,13 @@ through `in_dims=[C, L]` with optional causal attention and padding masks
 (sequence length is fixed at construction).
 
 Note on piecewise affinity: with (leaky-)ReLU nonlinearities, the CNN/MLP
-conditioners keep the whole flow piecewise affine, which is what enables the
-verification workflows below. The transformer conditioner is smooth rather than
-piecewise affine (softmax attention, GELU, LayerNorm) and is intended for density
-estimation and anomaly detection.
+conditioners keep the whole flow piecewise affine, which enables exact,
+SMT/MILP-based verification. The transformer conditioner is smooth rather than
+piecewise affine (softmax attention, GELU, LayerNorm), so it is out of reach for
+exact SMT encodings; abstract-interpretation-based verifiers such as
+alpha-beta-CROWN, however, handle transformer architectures via bound propagation,
+so verification workflows remain possible. It is also the natural choice for
+density estimation and anomaly detection, where no verifier is involved.
 
 ## Evaluation suite
 
