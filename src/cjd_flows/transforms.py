@@ -59,8 +59,13 @@ class BaseTransform(dist.TransformModule):
         """
         raise NotImplementedError()
     
-    def log_prior(self) -> torch.Tensor:
-        """Defines a uniform (pseudo-)prior."""
+    def log_prior(self, include_constants: bool = False) -> torch.Tensor:
+        """Defines a uniform (pseudo-)prior.
+
+        Args:
+            include_constants: If True, include additive normalization
+                constants where implemented by subclasses.
+        """
         return 0.0
     
     def simplify(self) -> object:
@@ -989,6 +994,11 @@ class BlockAffineTransform(BaseTransform):
             int: sign of the determinant of the Jacobian of the transform
         """
         return self.block_transform.sign() ** self.n_blocks
+
+    def log_prior(self, include_constants: bool = False) -> torch.Tensor:
+        """Forwards prior computation to wrapped affine transform."""
+        # Parameters are shared across blocks; do not multiply by n_blocks.
+        return self.block_transform.log_prior(include_constants=include_constants)
     
     def _to_block_plane_linear(self) -> BaseTransform:
         """ Converts the input tensor to a block plane linear form.
@@ -1368,12 +1378,18 @@ class LUTransform(AffineTransform):
         M = torch.inverse(M_inv)
         return PlaneBijectiveLinearTransform(self.dim, M, self.bias_vector, M_inv)
     
-    def log_prior(self) -> float:
-        """ Computes the (log-normal) log prior of the transform 
-        (additive constants are omitted)"""
+    def log_prior(self, include_constants: bool = False) -> float:
+        """Computes the log prior of the transform in log-space.
+
+        Args:
+            include_constants: If True, include Normal normalization constants.
+        """
         # log-density of Normal in log-space
         x = self.U.diag().abs().log()
         log_prior = -(x * x).sum() / (2 * self.prior_scale**2)
+        if include_constants:
+            d = x.numel()
+            log_prior += -d * math.log(self.prior_scale * math.sqrt(2 * math.pi))
         # Change of variables to input space
         log_prior += -x.sum()
         return log_prior
@@ -1453,6 +1469,15 @@ class SequentialAffineTransform(AffineTransform):
             float: sign of the determinant of the Jacobian of the transform
         """
         return math.prod([transform.sign() for transform in self.transforms])
+
+    def log_prior(self, include_constants: bool = False) -> torch.Tensor:
+        """Aggregates priors over all child affine transforms."""
+        return sum(
+            [
+                transform.log_prior(include_constants=include_constants)
+                for transform in self.transforms
+            ]
+        )
     
     def matrix(self) -> torch.Tensor:
         """ Returns the transformation matrix"""
@@ -1568,10 +1593,18 @@ class BlockLUTransform(LUTransform):
         """ Alias for :func:`backward`"""
         return self.backward(y)
     
-    def log_prior(self, correlated: bool = False) -> torch.Tensor:
-        """Defines a log-normal prior on the diagonal elements of U Matrix,
-        implicitply defining a log-normal prior on the absolute determinat
-        of the transform."""
+    def log_prior(
+        self,
+        correlated: bool = False,
+        include_constants: bool = False,
+    ) -> torch.Tensor:
+        """Defines the prior on diagonal elements of U in log-space.
+
+        Args:
+            correlated: Use correlated covariance when True.
+            include_constants: If True, include additive normalization
+                constants for the implemented quadratic form.
+        """
         precision = None
         d = self.block_size
         if correlated:
@@ -1591,6 +1624,12 @@ class BlockLUTransform(LUTransform):
         # log-density of Normal in log-space
         x = self.U.diag().abs().log() 
         log_prior = -(x * (precision @ x)).sum()
+        if include_constants:
+            # Normalization constant for exp(-x^T P x).
+            sign, logdet_precision = torch.linalg.slogdet(precision)
+            if sign <= 0:
+                raise RuntimeError("Precision matrix must be positive definite.")
+            log_prior += 0.5 * logdet_precision - 0.5 * d * math.log(math.pi)
         # Change of variables to input space
         log_prior += -x.sum()
         return log_prior

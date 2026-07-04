@@ -5,10 +5,10 @@ from torch.utils.data import Dataset
 from pyro import distributions as dist
 from typing import List, Dict, Literal, Any, Iterable, Optional, Type, Union, Tuple
 import torch
-from src.usflows.distributions import RadialDistribution, Independent
-from src.usflows.sophia import SophiaG
+from src.cjd_flows.distributions import RadialDistribution, Independent
+from src.cjd_flows.sophia import SophiaG
 
-from src.usflows.transforms import (
+from src.cjd_flows.transforms import (
     ScaleTransform,
     MaskedCoupling,
     LUTransform,
@@ -401,7 +401,8 @@ class USFlow(Flow):
         lu_transform: int = 1,
         householder: int = 1,
         masktype: MASKTYPE = "checkerboard",
-        *args, 
+        exact_prior_constants: bool = False,
+        *args,
         **kwargs
     ):
         
@@ -413,6 +414,7 @@ class USFlow(Flow):
         self.conditioner_cls = conditioner_cls
         self.conditioner_args = conditioner_args
         self.prior_scale = prior_scale
+        self.exact_prior_constants = exact_prior_constants
         #self.nonlinearity = nonlinearity
         if masktype == "checkerboard" :
             self.mask_Generator = USFlow.create_checkerboard_mask 
@@ -543,7 +545,14 @@ class USFlow(Flow):
         if self.prior_scale is not None:
             log_prior = 0
             for p in self.layers:
-                log_prior += p.log_prior()
+                try:
+                    log_prior += p.log_prior(
+                        include_constants=self.exact_prior_constants
+                    )
+                except TypeError:
+                    # Backward-compatible fallback for transforms that do not
+                    # expose include_constants.
+                    log_prior += p.log_prior()
             return log_prior
         else:
             return 0

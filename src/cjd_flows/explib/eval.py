@@ -11,7 +11,7 @@ import scipy.stats as stats
 from scipy.stats import binomtest, wilcoxon
 from sklearn.neighbors import KernelDensity
 
-from src.usflows.distributions import RadialDistribution
+from src.cjd_flows.distributions import RadialDistribution
 
 class RadialFlowEvaluator:
     def __init__(self, flow, data, device='cpu', p: Optional[float] = None, norm_distribution: Optional[torch.distributions.Distribution] = None, loc: Optional[torch.Tensor] = None):

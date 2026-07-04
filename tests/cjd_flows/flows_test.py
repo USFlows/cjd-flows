@@ -1,8 +1,8 @@
 import torch
 from pyro.distributions import Normal
 
-from src.usflows.flows import USFlow
-from src.usflows.distributions import RadialDistribution, GammaMM
+from src.cjd_flows.flows import USFlow
+from src.cjd_flows.distributions import RadialDistribution, GammaMM
 from pyro.nn import DenseNN
 
 def test_onnx():

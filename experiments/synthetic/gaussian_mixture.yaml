@@ -1,9 +1,9 @@
 ---
-__object__: src.usflows.explib.base.ExperimentCollection
+__object__: src.cjd_flows.explib.base.ExperimentCollection
 name: gaussian_mixture_experiments
 experiments:
   - &exp2d
-    __object__: src.usflows.explib.hyperopt.HyperoptExperiment
+    __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
     name: gaussian_mixture_2D
     device: cpu
     scheduler: &scheduler 
@@ -23,10 +23,10 @@ experiments:
         "image_shape": [28, 28]
       dataset: &dataset
         class:
-          __class__: src.usflows.explib.datasets.DistributionSplit
+          __class__: src.cjd_flows.explib.datasets.DistributionSplit
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0], [1.0, 1.0]]) 
             covariance_matrix:
@@ -42,14 +42,14 @@ experiments:
         __eval__: tune.choice([32])
       optim_cfg: &optim 
         optimizer:
-          __class__: src.usflows.sophia.SophiaG
+          __class__: src.cjd_flows.sophia.SophiaG
         params:
           lr: 
             __eval__: 1e-3
           weight_decay: 0.0
       model_cfg:
         type:
-          __class__: src.usflows.flows.USFlow
+          __class__: src.cjd_flows.flows.USFlow
         params:
           soft_training: 
             __eval__: tune.choice([False])
@@ -74,14 +74,14 @@ experiments:
           nonlinearity:
             __eval__: tune.choice([torch.nn.ReLU()])
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
+            __object__: src.cjd_flows.distributions.RadialDistribution
             device: cpu
             p: 
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([2]).to("cpu")
             norm_distribution:
-              __object__: src.usflows.distributions.GammaMM
+              __object__: src.cjd_flows.distributions.GammaMM
               concentration:
                 __eval__: torch.rand([20]).to("cpu") * torch.sqrt(torch.tensor([2.0]))
               rate:
@@ -95,7 +95,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -110,13 +110,13 @@ experiments:
             hidden_dims: [32, 32]
             param_dims: [3]
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
+            __object__: src.cjd_flows.distributions.RadialDistribution
             p: 
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([3]).to("cpu")
             norm_distribution:
-              __object__: src.usflows.distributions.GammaMM
+              __object__: src.cjd_flows.distributions.GammaMM
               concentration:
                 __eval__: torch.rand([20]).to("cpu") * torch.sqrt(torch.tensor([3.0]))
               rate:
@@ -130,7 +130,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -145,13 +145,13 @@ experiments:
             hidden_dims: [32, 32]
             param_dims: [4]
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
+            __object__: src.cjd_flows.distributions.RadialDistribution
             p:
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([4]).to("cpu")
             norm_distribution:
-              __object__: src.usflows.distributions.GammaMM
+              __object__: src.cjd_flows.distributions.GammaMM
               concentration:
                 __eval__: torch.rand([20]).to("cpu") * torch.sqrt(torch.tensor([4.0]))
               rate:
@@ -165,7 +165,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -180,13 +180,13 @@ experiments:
             hidden_dims: [32, 32]
             param_dims: [5]
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
+            __object__: src.cjd_flows.distributions.RadialDistribution
             p:
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([5]).to("cpu")
             norm_distribution:
-              __object__: src.usflows.distributions.GammaMM
+              __object__: src.cjd_flows.distributions.GammaMM
               concentration:
                 __eval__: torch.rand([20]).to("cpu") * torch.sqrt(torch.tensor([5.0]))
               rate:
@@ -200,7 +200,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -215,13 +215,13 @@ experiments:
             hidden_dims: [32, 32]
             param_dims: [6]
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
+            __object__: src.cjd_flows.distributions.RadialDistribution
             p:
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([6]).to("cpu")
             norm_distribution:
-              __object__: src.usflows.distributions.GammaMM
+              __object__: src.cjd_flows.distributions.GammaMM
               concentration:
                 __eval__: torch.rand([20]).to("cpu") * torch.sqrt(torch.tensor([6.0]))
               rate:
@@ -235,7 +235,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -250,13 +250,13 @@ experiments:
             hidden_dims: [32, 32]
             param_dims: [7]
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
+            __object__: src.cjd_flows.distributions.RadialDistribution
             p:
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([7]).to("cpu")
             norm_distribution:
-              __object__: src.usflows.distributions.GammaMM
+              __object__: src.cjd_flows.distributions.GammaMM
               concentration:
                 __eval__: torch.rand([20]).to("cpu") * torch.sqrt(torch.tensor([7.0]))
               rate:
@@ -270,7 +270,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -285,13 +285,13 @@ experiments:
             hidden_dims: [32, 32]
             param_dims: [8]
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
+            __object__: src.cjd_flows.distributions.RadialDistribution
             p:
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([8]).to("cpu")
             norm_distribution:
-              __object__: src.usflows.distributions.GammaMM
+              __object__: src.cjd_flows.distributions.GammaMM
               concentration:
                 __eval__: torch.rand([20]).to("cpu") * torch.sqrt(torch.tensor([8.0]))
               rate:
@@ -305,7 +305,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -320,13 +320,13 @@ experiments:
             hidden_dims: [32, 32]
             param_dims: [9]
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
+            __object__: src.cjd_flows.distributions.RadialDistribution
             p:
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([9]).to("cpu")
             norm_distribution:
-              __object__: src.usflows.distributions.GammaMM
+              __object__: src.cjd_flows.distributions.GammaMM
               concentration:
                 __eval__: torch.rand([20]).to("cpu") * torch.sqrt(torch.tensor([9.0]))
               rate:
@@ -340,7 +340,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -355,13 +355,13 @@ experiments:
             hidden_dims: [32, 32]
             param_dims: [10]
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
+            __object__: src.cjd_flows.distributions.RadialDistribution
             p:
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([10]).to("cpu")
             norm_distribution:
-              __object__: src.usflows.distributions.GammaMM
+              __object__: src.cjd_flows.distributions.GammaMM
               concentration:
                 __eval__: torch.rand([20]).to("cpu") * torch.sqrt(torch.tensor([10.0]))
               rate:
@@ -375,7 +375,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0] * 100, [1.0] * 100]) 
             covariance_matrix:
@@ -390,13 +390,13 @@ experiments:
             hidden_dims: [32, 32]
             param_dims: [100]
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
+            __object__: src.cjd_flows.distributions.RadialDistribution
             p:
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([100]).to("cpu")
             norm_distribution:
-              __object__: src.usflows.distributions.GammaMM
+              __object__: src.cjd_flows.distributions.GammaMM
               concentration:
                 __eval__: torch.rand([20]).to("cpu") * torch.sqrt(torch.tensor([100.0]))
               rate:

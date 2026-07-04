@@ -1,10 +1,10 @@
 from typing import Dict, Iterable, Literal
 from matplotlib import pyplot as plt
 import numpy as np
-from src.usflows.explib import datasets
+from src.cjd_flows.explib import datasets
 import torch
 
-from src.usflows.flows import Flow
+from src.cjd_flows.flows import Flow
 
 Norm = Literal[-1, 1, 2]
 SampleType = Literal["conditional", "boundary", "boundary_basis"]

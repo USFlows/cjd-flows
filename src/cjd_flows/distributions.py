@@ -1,7 +1,7 @@
 from typing import Dict, Iterable, Optional, Union
-from src.usflows.transforms import Rotation, CompositeRotation
-from src.usflows.linalg import random_orthonormal_matrix
-from src.usflows.utils import inv_softplus
+from src.cjd_flows.transforms import Rotation, CompositeRotation
+from src.cjd_flows.linalg import random_orthonormal_matrix
+from src.cjd_flows.utils import inv_softplus
 import pyro
 import math
 
