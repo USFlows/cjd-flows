@@ -17,9 +17,9 @@ RUN pip install --upgrade --break-system-packages pip && pip install --break-sys
 
 RUN mkdir /root/.ssh/ && \
     ssh-keyscan github.com >> /root/.ssh/known_hosts && \
-    git clone https://github.com/aai-institute/VeriFlow.git
+    git clone https://github.com/USFlows/cjd-flows.git
 
-WORKDIR /VeriFlow
+WORKDIR /cjd-flows
 # TODO delete before merging!
 RUN git checkout dockerize-experiments
 RUN poetry install

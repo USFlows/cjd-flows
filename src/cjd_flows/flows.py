@@ -5,10 +5,10 @@ from torch.utils.data import Dataset
 from pyro import distributions as dist
 from typing import List, Dict, Literal, Any, Iterable, Optional, Type, Union, Tuple
 import torch
-from src.usflows.distributions import RadialDistribution, Independent
-from src.usflows.sophia import SophiaG
+from src.cjd_flows.distributions import RadialDistribution, Independent
+from src.cjd_flows.sophia import SophiaG
 
-from src.usflows.transforms import (
+from src.cjd_flows.transforms import (
     ScaleTransform,
     MaskedCoupling,
     LUTransform,

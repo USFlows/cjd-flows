@@ -1,9 +1,9 @@
 ---
-__object__: src.explib.base.ExperimentCollection
+__object__: src.cjd_flows.explib.base.ExperimentCollection
 name: cfair10_basedist_comparison
 experiments:
     - &exp_laplace
-      __object__: src.explib.hyperopt.HyperoptExperiment
+      __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
       name: mnist_laplace
       scheduler: &scheduler 
         __object__: ray.tune.schedulers.ASHAScheduler
@@ -18,7 +18,7 @@ experiments:
         mode: min
       trial_config:
         dataset: &dataset
-          __object__: src.veriflow.experiments.datasets.CfairSplit
+          __object__: src.cjd_flows.experiments.datasets.CfairSplit
           digit: 0
         epochs: &epochs 20000
         patience: &patience 50
@@ -34,7 +34,7 @@ experiments:
         
         model_cfg: 
           type:
-            __class__: &model src.veriflow.flows.NiceFlow
+            __class__: &model src.cjd_flows.flows.NiceFlow
           params:
             coupling_layers: &coupling_layers 
               __eval__: tune.choice([ 2, 3, 4, 5])

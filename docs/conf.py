@@ -17,7 +17,7 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'VeriFlow'
+project = 'CJD-Flows'
 copyright = '2023, Transferlab, appliedAI Institute for Europe'
 author = 'Faried Abu Zaid'
 

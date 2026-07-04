@@ -1,9 +1,9 @@
 ---
-__object__: src.explib.base.ExperimentCollection
+__object__: src.cjd_flows.explib.base.ExperimentCollection
 name: mnist_digit_scaled_small_models_l1rad
 experiments:
   - &exp_nice_lu_laplace
-    __object__: src.explib.hyperopt.HyperoptExperiment
+    __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
     name: mnist_0_logN
     scheduler:  
       __object__: ray.tune.schedulers.ASHAScheduler
@@ -21,7 +21,7 @@ experiments:
         images: true
         "image_shape": [10, 10]
       dataset: 
-        __object__: src.explib.datasets.MnistSplit
+        __object__: src.cjd_flows.explib.datasets.MnistSplit
         digit: 0
         scale: true
       epochs:  200000
@@ -37,7 +37,7 @@ experiments:
           weight_decay: 0.0
       model_cfg: 
         type:
-          __class__:  src.veriflow.flows.NiceFlow
+          __class__:  src.cjd_flows.flows.NiceFlow
         params:
           masktype: alternate
           soft_training: false
@@ -55,7 +55,7 @@ experiments:
           split_dim: 
             __eval__: tune.choice([10 + i for i in range(41)])
           base_distribution: 
-            __object__: src.veriflow.distributions.RadialDistribution       
+            __object__: src.cjd_flows.distributions.RadialDistribution       
             p: 1.0
             loc: 
               __eval__: torch.zeros(100).to("cpu")
@@ -73,7 +73,7 @@ experiments:
         params:
           base_distribution:
             __exact__: 
-              __object__: src.veriflow.distributions.RadialDistribution       
+              __object__: src.cjd_flows.distributions.RadialDistribution       
               p: 1.0
               loc: 
                 __eval__: torch.zeros(100).to("cpu")
@@ -87,7 +87,7 @@ experiments:
         params:
           base_distribution:
             __exact__: 
-              __object__: src.veriflow.distributions.RadialDistribution       
+              __object__: src.cjd_flows.distributions.RadialDistribution       
               p: 1.0
               loc: 
                 __eval__: torch.zeros(100).to("cpu")

@@ -1,9 +1,9 @@
 ---
-__object__: src.usflows.explib.base.ExperimentCollection
+__object__: src.cjd_flows.explib.base.ExperimentCollection
 name: gaussian_mixture_experiments
 experiments:
   - &exp2d
-    __object__: src.usflows.explib.hyperopt.HyperoptExperiment
+    __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
     name: gaussian_mixture_2D
     device: cpu
     scheduler: &scheduler 
@@ -23,10 +23,10 @@ experiments:
         "image_shape": [28, 28]
       dataset: &dataset
         class:
-          __class__: src.usflows.explib.datasets.DistributionSplit
+          __class__: src.cjd_flows.explib.datasets.DistributionSplit
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0], [1.0, 1.0]]) 
             covariance_matrix:
@@ -42,14 +42,14 @@ experiments:
         __eval__: tune.choice([32])
       optim_cfg: &optim 
         optimizer:
-          __class__: src.usflows.sophia.SophiaG
+          __class__: src.cjd_flows.sophia.SophiaG
         params:
           lr: 
             __eval__: 1e-3
           weight_decay: 0.0
       model_cfg:
         type:
-          __class__: src.usflows.flows.USFlow
+          __class__: src.cjd_flows.flows.USFlow
         params:
           soft_training: 
             __eval__: tune.choice([False])
@@ -74,7 +74,7 @@ experiments:
           nonlinearity:
             __eval__: tune.choice([torch.nn.ReLU()])
           base_distribution:
-            __object__: src.usflows.distributions.Normal
+            __object__: src.cjd_flows.distributions.Normal
             loc:
               __eval__: torch.zeros([2]).to("cpu")
             scale:
@@ -86,7 +86,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -101,7 +101,7 @@ experiments:
             hidden_dims: [32, 32]
             param_dims: [3]
           base_distribution:
-            __object__: src.usflows.distributions.Normal
+            __object__: src.cjd_flows.distributions.Normal
             loc:
               __eval__: torch.zeros([3]).to("cpu")
   - __overwrites__: *exp2d
@@ -110,7 +110,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -133,7 +133,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -156,7 +156,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -179,7 +179,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -202,7 +202,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -225,7 +225,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -248,7 +248,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]]) 
             covariance_matrix:
@@ -271,7 +271,7 @@ experiments:
       dataset:
         params:
           distribution:
-            __object__: src.usflows.distributions.GMM
+            __object__: src.cjd_flows.distributions.GMM
             loc:
               __eval__: torch.tensor([[-1.0] * 100, [1.0] * 100]) 
             covariance_matrix:

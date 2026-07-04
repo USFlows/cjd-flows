@@ -1,9 +1,9 @@
 ---
-__object__: src.explib.base.ExperimentCollection
+__object__: src.cjd_flows.explib.base.ExperimentCollection
 name: fashion_ablation
 experiments:
   - &exp_rad_logN
-    __object__: src.explib.hyperopt.HyperoptExperiment
+    __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
     name: cfair_full_radial_logN
     skip: true
     device: cpu
@@ -25,7 +25,7 @@ experiments:
         "image_shape": [28, 28]
       dataset: &dataset
         class:
-          __class__: src.explib.datasets.FashionMnistSplit
+          __class__: src.cjd_flows.explib.datasets.FashionMnistSplit
         params:
           space_to_depth_factor: 4
           dataloc: /home/faried/Projects/USFlows/data/fashion
@@ -36,7 +36,7 @@ experiments:
         __eval__: tune.choice([32])
       optim_cfg: &optim 
         optimizer:
-          __class__: src.usflows.sophia.SophiaG
+          __class__: src.cjd_flows.sophia.SophiaG
         params:
           lr: 
             __eval__: 1e-3
@@ -44,7 +44,7 @@ experiments:
       
       model_cfg:
         type:
-          __class__: src.usflows.flows.USFlow
+          __class__: src.cjd_flows.flows.USFlow
         params:
           soft_training: 
             __eval__: tune.choice([False])
@@ -59,7 +59,7 @@ experiments:
           lu_transform: 1
           householder: 0
           conditioner_cls:
-            __class__: src.usflows.networks.ConvNet2D
+            __class__: src.cjd_flows.networks.ConvNet2D
           conditioner_args:
             c_in: 48
             c_hidden: 
@@ -78,14 +78,14 @@ experiments:
           nonlinearity:
             __eval__: tune.choice([torch.nn.ReLU()])
           base_distribution:
-            __object__: src.usflows.distributions.RadialDistribution
+            __object__: src.cjd_flows.distributions.RadialDistribution
             device: cpu
             p: 
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([48, 8, 8]).to("cpu")
             norm_distribution:
-              __object__: src.usflows.distributions.LogNormal
+              __object__: src.cjd_flows.distributions.LogNormal
               loc:
                 __eval__: torch.ones([1]).to("cpu") * 6
               scale:

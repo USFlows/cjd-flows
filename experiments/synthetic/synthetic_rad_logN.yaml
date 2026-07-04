@@ -1,14 +1,14 @@
 ---
 # Runs a series of experiments on various synthetic 2D datasets
-__object__: src.explib.base.ExperimentCollection
+__object__: src.cjd_flows.explib.base.ExperimentCollection
 name: synthetic_basedist_comparison
 experiments:
     - &main
-      __object__: src.explib.base.ExperimentCollection
+      __object__: src.cjd_flows.explib.base.ExperimentCollection
       name: blobs
       experiments:
         - &main_normal
-          __object__:  src.explib.hyperopt.HyperoptExperiment
+          __object__:  src.cjd_flows.explib.hyperopt.HyperoptExperiment
           name: normal
           device: cpu
           skip: true
@@ -28,7 +28,7 @@ experiments:
               images: false
               scatter: true
             dataset: &dataset
-              __object__: src.explib.datasets.SyntheticSplit
+              __object__: src.cjd_flows.explib.datasets.SyntheticSplit
               generator: circles
               params_train: &params_train
                 n_samples: 100000
@@ -50,7 +50,7 @@ experiments:
             
             model_cfg: 
               type:
-                __class__: &model src.veriflow.flows.NiceFlow
+                __class__: &model src.cjd_flows.flows.NiceFlow
               params:
                 soft_training: true
                 training_noise_prior:
@@ -67,7 +67,7 @@ experiments:
                   __eval__: tune.choice([torch.nn.ReLU()])
                 split_dim: &split_dim 1
                 base_distribution:
-                  __object__: src.veriflow.distributions.RadialDistribution       
+                  __object__: src.cjd_flows.distributions.RadialDistribution       
                   device: cpu
                   p: 1.0
                   loc: 

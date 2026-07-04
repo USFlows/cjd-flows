@@ -75,10 +75,10 @@ anomaly-detection applications below.
 
 CJD-Flows provides a modular implementation of US-flow components:
 
-- Flow models and building blocks in `src/usflows/flows.py`.
-- Affine and coupling transforms in `src/usflows/transforms.py`.
-- Conditioner networks in `src/usflows/networks.py`.
-- Flexible base distributions in `src/usflows/distributions.py`, including radial distributions for `L1`, `L2`, and `Linf` geometries.
+- Flow models and building blocks in `src/cjd_flows/flows.py`.
+- Affine and coupling transforms in `src/cjd_flows/transforms.py`.
+- Conditioner networks in `src/cjd_flows/networks.py`.
+- Flexible base distributions in `src/cjd_flows/distributions.py`, including radial distributions for `L1`, `L2`, and `Linf` geometries.
 
 A key component is the **learnable radial norm distribution** (including mixture families), which closes an important expressivity gap for uniformly scaling flows while keeping latent geometry controllable.
 
@@ -115,7 +115,7 @@ density estimation and anomaly detection, where no verifier is involved.
 
 ## Evaluation suite
 
-The evaluation module in `src/usflows/explib/eval.py` is tailored to radial-base US flows and includes:
+The evaluation module in `src/cjd_flows/explib/eval.py` is tailored to radial-base US flows and includes:
 
 - norm-distribution diagnostics (KS, Wasserstein, PP/QQ/KDE),
 - radiality diagnostics (sign symmetry and simplex-uniformity tests),

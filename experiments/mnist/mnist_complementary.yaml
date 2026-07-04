@@ -1,9 +1,9 @@
 ---
-__object__: src.usflows.explib.base.ExperimentCollection
+__object__: src.cjd_flows.explib.base.ExperimentCollection
 name: mnist_ablation
 experiments:
   - &exp_rad_logN
-    __object__: src.usflows.explib.hyperopt.HyperoptExperiment
+    __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
     name: mnist_full_radial_logN
     device: cuda
     skip: False
@@ -24,7 +24,7 @@ experiments:
         "image_shape": [28, 28]
       dataset: &dataset
         class: 
-          __class__: src.usflows.explib.datasets.MnistSplit
+          __class__: src.cjd_flows.explib.datasets.MnistSplit
         params:
           dataloc: /home/faried/Projects/USFlows/data/mnist
           space_to_depth_factor: 4
@@ -35,7 +35,7 @@ experiments:
         __eval__: tune.choice([32])
       optim_cfg: 
         optimizer:
-          __class__: src.usflows.sophia.SophiaG
+          __class__: src.cjd_flows.sophia.SophiaG
         params:
           lr: 
             __eval__: 1e-3
@@ -43,7 +43,7 @@ experiments:
       
       model_cfg:
         type:
-          __class__: src.usflows.flows.USFlow
+          __class__: src.cjd_flows.flows.USFlow
         params:
           soft_training: 
             __eval__: tune.choice([False])
@@ -58,7 +58,7 @@ experiments:
           lu_transform: 1
           householder: 0
           conditioner_cls:
-            __class__: src.usflows.networks.ConvNet2D
+            __class__: src.cjd_flows.networks.ConvNet2D
           conditioner_args:
             c_in: 16
             c_hidden: 
@@ -97,14 +97,14 @@ experiments:
             affine_conjugation: false
             base_distribution:
               __exact__:
-                __object__: src.usflows.distributions.RadialDistribution
+                __object__: src.cjd_flows.distributions.RadialDistribution
                 device: cuda
                 p: 
                   __eval__: float("1")
                 loc:
                   __eval__: torch.zeros([16, 7, 7]).to("cuda")
                 norm_distribution:
-                  __object__: src.usflows.distributions.LogNormal
+                  __object__: src.cjd_flows.distributions.LogNormal
                   loc:
                     __eval__: torch.ones([1]).to("cuda") * 6
                   scale:

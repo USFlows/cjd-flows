@@ -1,9 +1,9 @@
 ---
-__object__: src.usflows.explib.base.ExperimentCollection
+__object__: src.cjd_flows.explib.base.ExperimentCollection
 name: cifar_jet
 experiments:
   - &exp_jet
-    __object__: src.usflows.explib.hyperopt.HyperoptExperiment
+    __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
     name: cifar_jet_conditioner
     skip: false
     device: cuda
@@ -24,7 +24,7 @@ experiments:
         "image_shape": [28, 28]
       dataset: &dataset
         class:
-          __class__: src.usflows.explib.datasets.Cifar10Split
+          __class__: src.cjd_flows.explib.datasets.Cifar10Split
         params:
           space_to_depth_factor: 4
           dataloc: /home/faried/Projects/USFlows/data/cifar10
@@ -35,7 +35,7 @@ experiments:
         __eval__: tune.choice([32])
       optim_cfg: &optim
         optimizer:
-          __class__: src.usflows.sophia.SophiaG
+          __class__: src.cjd_flows.sophia.SophiaG
         params:
           lr:
             __eval__: 1e-4
@@ -43,7 +43,7 @@ experiments:
 
       model_cfg:
         type:
-          __class__: src.usflows.flows.USFlow
+          __class__: src.cjd_flows.flows.USFlow
         params:
           soft_training:
             __eval__: tune.choice([False])
@@ -62,7 +62,7 @@ experiments:
           # couplings, as in the Jet architecture.
           masktype: channel
           conditioner_cls:
-            __class__: src.usflows.networks.JetConditioner
+            __class__: src.cjd_flows.networks.JetConditioner
           conditioner_args:
             in_dims: [48, 8, 8]
             # space-to-depth already patchified the image; keep 8x8=64 tokens

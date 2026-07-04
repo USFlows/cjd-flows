@@ -1,5 +1,5 @@
 [project]
-name = "veriflow"
+name = "cjd-flows"
 version = "0.9.0"
 description = "Stable uniformly scaling normalizing flows with constant Jacobian determinant and radial base distributions."
 readme = "README.md"
@@ -53,11 +53,11 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/aai-institute/VeriFlow"
-Documentation = "https://github.com/aai-institute/VeriFlow/tree/main/docs"
+Repository = "https://github.com/USFlows/cjd-flows"
+Documentation = "https://github.com/USFlows/cjd-flows/tree/main/docs"
 
 [tool.poetry]
-packages = [{include = "src/usflows"}, {include = "scripts"}]
+packages = [{include = "src/cjd_flows"}, {include = "scripts"}]
 
 #
 #[tool.setuptools.packages.find]

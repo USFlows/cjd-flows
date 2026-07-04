@@ -1,9 +1,9 @@
 ---
-__object__: src.explib.base.ExperimentCollection
+__object__: src.cjd_flows.explib.base.ExperimentCollection
 name: mnist_ablation
 experiments:
   - &exp_laplace0
-    __object__: src.explib.hyperopt.HyperoptExperiment
+    __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
     name: mnist0
     scheduler:  
       __object__: ray.tune.schedulers.ASHAScheduler
@@ -25,7 +25,7 @@ experiments:
         image_shape: [28, 28]
       dataset:
         class:
-          __class__: src.explib.datasets.MnistSplit
+          __class__: src.cjd_flows.explib.datasets.MnistSplit
         params:
           dataloc: /Users/fariedabuzaid/Projects/veriflow/data
           space_to_depth_factor: 4
@@ -35,14 +35,14 @@ experiments:
         __eval__: tune.choice([32])
       optim_cfg: 
         optimizer:
-          __class__: src.veriflow.sophia.SophiaG 
+          __class__: src.cjd_flows.sophia.SophiaG 
         params:
           lr: 
             __eval__: 1e-4
           weight_decay: 0.0
       model_cfg: 
         type:
-          __class__: src.veriflow.flows.USFlow
+          __class__: src.cjd_flows.flows.USFlow
         params:
           soft_training: false
           training_noise_prior:
@@ -55,7 +55,7 @@ experiments:
           lu_transform: 1
           householder: 0
           conditioner_cls: 
-            __class__: src.veriflow.networks.ConvNet2D
+            __class__: src.cjd_flows.networks.ConvNet2D
           conditioner_args:
             c_in: 16
             c_hidden: 32
@@ -73,7 +73,7 @@ experiments:
             __eval__: tune.choice([torch.nn.ReLU()])
           base_distribution: 
             class:
-              __class__: src.veriflow.distributions.RadialMM
+              __class__: src.cjd_flows.distributions.RadialMM
             params:      
               device: cpu
               p: 2.0
@@ -81,7 +81,7 @@ experiments:
                 __eval__: torch.randn([20, 16, 7, 7]).to("cpu") * 0.1
               norm_distribution:
                 class:
-                  __class__: src.veriflow.distributions.LogNormal
+                  __class__: src.cjd_flows.distributions.LogNormal
                 params:
                   loc: 
                     __eval__: torch.ones([20, 1, 1, 1]).to("cpu") * 1
