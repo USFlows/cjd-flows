@@ -1,0 +1,84 @@
+---
+__object__: src.usflows.explib.base.ExperimentCollection
+name: cifar_jet
+experiments:
+  - &exp_jet
+    __object__: src.usflows.explib.hyperopt.HyperoptExperiment
+    name: cifar_jet_conditioner
+    skip: false
+    device: cuda
+    scheduler: &scheduler
+      __object__: ray.tune.schedulers.ASHAScheduler
+      max_t: 1000000
+      grace_period: 1000000
+      reduction_factor: 2
+    num_hyperopt_samples: &num_hyperopt_samples 1
+    gpus_per_trial: &gpus_per_trial 1
+    cpus_per_trial: &cpus_per_trial 1
+    tuner_params: &tuner_params
+      metric: val_loss
+      mode: min
+    trial_config:
+      logging:
+        images: false
+        "image_shape": [28, 28]
+      dataset: &dataset
+        class:
+          __class__: src.usflows.explib.datasets.Cifar10Split
+        params:
+          space_to_depth_factor: 4
+          dataloc: /home/faried/Projects/USFlows/data/cifar10
+
+      epochs: &epochs 200000
+      patience: &patience 1
+      batch_size: &batch_size
+        __eval__: tune.choice([32])
+      optim_cfg: &optim
+        optimizer:
+          __class__: src.usflows.sophia.SophiaG
+        params:
+          lr:
+            __eval__: 1e-4
+          weight_decay: 0.0
+
+      model_cfg:
+        type:
+          __class__: src.usflows.flows.USFlow
+        params:
+          soft_training:
+            __eval__: tune.choice([False])
+          training_noise_prior:
+            __object__: pyro.distributions.Uniform
+            low:
+              __eval__: 1e-20
+            high: 0.01
+          prior_scale: 1.0
+          coupling_blocks:
+            __eval__: tune.choice([10])
+          lu_transform: 1
+          householder: 0
+          # channel masks align the coupling split with token contents;
+          # the LU (1x1) layers provide invertible channel mixing between
+          # couplings, as in the Jet architecture.
+          masktype: channel
+          conditioner_cls:
+            __class__: src.usflows.networks.JetConditioner
+          conditioner_args:
+            in_dims: [48, 8, 8]
+            # space-to-depth already patchified the image; keep 8x8=64 tokens
+            patch_size: 1
+            embed_dim:
+              __eval__: tune.choice([256])
+            depth:
+              __eval__: tune.choice([6])
+            num_heads: 8
+            mlp_ratio: 4.0
+            context_dim: 1
+          in_dims: [48, 8, 8]
+          affine_conjugation: true
+          base_distribution:
+            __object__: pyro.distributions.Normal
+            loc:
+              __eval__: torch.zeros([48, 8, 8]).to("cuda")
+            scale:
+              __eval__: torch.ones([48, 8, 8]).to("cuda")

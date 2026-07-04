@@ -6,6 +6,8 @@ import math
 from typing import Iterable, List, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
+import torch.utils.checkpoint
 from pyro.nn import DenseNN
 from torch import nn
 from typing import List, Optional, Tuple, Union
@@ -822,3 +824,379 @@ class BottleneckConv(nn.Module):
             x = conv(x)
             x = self.nonlinearity(x)
         return x
+
+
+def sincos_pos_embed(embed_dim: int, grid_shape: Iterable[int]) -> torch.Tensor:
+    """Fixed sine-cosine positional embedding for an N-D token grid.
+
+    The embedding dimension is split evenly across the grid axes; each axis
+    receives a standard 1-D sin-cos embedding. Any remainder dimensions are
+    zero-padded. Being non-learned, the embedding is resolution-agnostic.
+
+    Args:
+        embed_dim: Total embedding dimension per token.
+        grid_shape: Number of tokens along each axis, e.g. (h, w) for images.
+
+    Returns:
+        Tensor of shape (prod(grid_shape), embed_dim).
+    """
+    grid_shape = tuple(int(s) for s in grid_shape)
+    ndim = len(grid_shape)
+    # even number of dims per axis (sin/cos pairs)
+    dim_per_axis = (embed_dim // ndim) // 2 * 2
+    assert dim_per_axis > 0, (
+        f"embed_dim={embed_dim} too small for {ndim} grid axes"
+    )
+
+    coords = torch.meshgrid(
+        *[torch.arange(s, dtype=torch.float64) for s in grid_shape],
+        indexing="ij",
+    )
+    embeddings = []
+    for axis in range(ndim):
+        omega = torch.arange(dim_per_axis // 2, dtype=torch.float64)
+        omega = 1.0 / (10000.0 ** (omega / (dim_per_axis / 2)))
+        angles = coords[axis].reshape(-1)[:, None] * omega[None, :]
+        embeddings.append(torch.cat([angles.sin(), angles.cos()], dim=1))
+    emb = torch.cat(embeddings, dim=1)
+    n_tokens = emb.shape[0]
+    if emb.shape[1] < embed_dim:
+        pad = torch.zeros(n_tokens, embed_dim - emb.shape[1], dtype=torch.float64)
+        emb = torch.cat([emb, pad], dim=1)
+    return emb.float()
+
+
+class TokenMLP(nn.Module):
+    """Two-layer MLP applied independently to each token (acts on the last dim)."""
+
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features: int,
+        out_features: Optional[int] = None,
+        nonlinearity: Optional[nn.Module] = None,
+    ):
+        super().__init__()
+        out_features = out_features if out_features is not None else in_features
+        self.net = nn.Sequential(
+            nn.Linear(in_features, hidden_features),
+            nonlinearity if nonlinearity is not None else nn.GELU(),
+            nn.Linear(hidden_features, out_features),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+
+
+class MultiheadSelfAttention(nn.Module):
+    """Multi-head self-attention with optional QK-normalization, causal
+    masking, and key-padding masks.
+
+    All linear maps act token-wise; attention is the only operation that mixes
+    tokens. Uses `torch.nn.functional.scaled_dot_product_attention`, so flash /
+    memory-efficient kernels are picked automatically where available.
+    QK-normalization (RMSNorm on per-head queries and keys) prevents
+    attention-logit growth in deep stacks (ViT-22B / Jet).
+    """
+
+    def __init__(
+        self, dim: int, num_heads: int, qk_norm: bool = True, causal: bool = False
+    ):
+        super().__init__()
+        assert dim % num_heads == 0, "dim must be divisible by num_heads"
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+        self.causal = causal
+        self.qkv = nn.Linear(dim, 3 * dim)
+        self.proj = nn.Linear(dim, dim)
+        self.q_norm = nn.RMSNorm(self.head_dim) if qk_norm else nn.Identity()
+        self.k_norm = nn.RMSNorm(self.head_dim) if qk_norm else nn.Identity()
+
+    def forward(
+        self, x: torch.Tensor, padding_mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Args:
+            x: Token tensor of shape (batch, tokens, dim).
+            padding_mask: Optional boolean tensor of shape (batch, tokens);
+                True marks *valid* tokens. Invalid tokens are excluded as
+                attention keys. Every token always attends at least to itself,
+                which keeps softmax well-defined for padded queries (their
+                outputs should be ignored downstream).
+        """
+        B, N, D = x.shape
+        qkv = (
+            self.qkv(x)
+            .reshape(B, N, 3, self.num_heads, self.head_dim)
+            .permute(2, 0, 3, 1, 4)
+        )
+        q, k, v = qkv.unbind(0)
+        q, k = self.q_norm(q), self.k_norm(k)
+        if padding_mask is None:
+            out = F.scaled_dot_product_attention(q, k, v, is_causal=self.causal)
+        else:
+            # (B, 1, 1, N): mask invalid keys for all queries/heads
+            mask = padding_mask.to(torch.bool)[:, None, None, :]
+            if self.causal:
+                mask = mask & torch.ones(
+                    N, N, dtype=torch.bool, device=x.device
+                ).tril()
+            # self-attention is always allowed (avoids fully-masked rows)
+            mask = mask | torch.eye(N, dtype=torch.bool, device=x.device)
+            out = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
+        out = out.transpose(1, 2).reshape(B, N, D)
+        return self.proj(out)
+
+
+class JetBlock(nn.Module):
+    """Pre-LN ViT block with adaLN-zero context modulation (DiT-style).
+
+    The context embedding regresses per-block shift/scale/gate parameters that
+    modulate attention and MLP sub-blocks. The modulation head is
+    zero-initialized, so at initialization the gates are closed and the block
+    is the identity map regardless of context.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        mlp_ratio: float = 4.0,
+        qk_norm: bool = True,
+        causal: bool = False,
+        nonlinearity: Optional[nn.Module] = None,
+    ):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim, elementwise_affine=False)
+        self.attn = MultiheadSelfAttention(
+            dim, num_heads, qk_norm=qk_norm, causal=causal
+        )
+        self.norm2 = nn.LayerNorm(dim, elementwise_affine=False)
+        self.mlp = TokenMLP(dim, int(dim * mlp_ratio), dim, nonlinearity=nonlinearity)
+        self.ada = nn.Sequential(nn.SiLU(), nn.Linear(dim, 6 * dim))
+        nn.init.zeros_(self.ada[-1].weight)
+        nn.init.zeros_(self.ada[-1].bias)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        c: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        shift1, scale1, gate1, shift2, scale2, gate2 = (
+            self.ada(c).unsqueeze(1).chunk(6, dim=-1)
+        )
+        x = x + gate1 * self.attn(
+            self.norm1(x) * (1 + scale1) + shift1, padding_mask=padding_mask
+        )
+        x = x + gate2 * self.mlp(self.norm2(x) * (1 + scale2) + shift2)
+        return x
+
+
+class JetConditioner(nn.Module):
+    """ViT-style conditioner for additive coupling layers (Jet architecture,
+    Kolesnikov et al. 2024).
+
+    Shape-preserving network intended as the conditioner of a
+    :class:`~src.usflows.transforms.MaskedCoupling` layer: since additive
+    coupling has unit Jacobian determinant irrespective of the conditioner,
+    arbitrary capacity (including global self-attention) can be spent here
+    without affecting the constant-Jacobian-determinant property of the flow.
+
+    Pipeline: patchify (token-wise linear) -> fixed sin-cos positional
+    embedding -> `depth` pre-LN transformer blocks with adaLN-zero context
+    modulation -> LayerNorm -> zero-initialized token-wise linear head ->
+    unpatchify. All linear maps act independently per token; self-attention is
+    the only cross-token operation, giving a global receptive field in a
+    single coupling layer. The zero-initialized head (and zero-initialized
+    modulation gates) make the conditioner output exactly zero at
+    initialization, so the enclosing coupling layer starts as the identity.
+
+    Supported input topologies (mirroring :class:`ConvNet`):
+      - vector, ``in_dims == [D]``: the vector is chunked into tokens of
+        ``token_size`` entries (zero-padded if needed);
+      - spatial rank 1-3, ``in_dims == [C, *spatial]``: patchified with a
+        strided convolution of kernel and stride ``patch_size``.
+
+    Context (e.g. the soft-training noise scale) is embedded by a small MLP
+    and injected in every block via adaLN-zero. If ``context`` is None, a
+    learned null embedding is used, so unconditional operation shares the
+    same code path.
+
+    The trunk itself is domain-agnostic: for sequence data use
+    ``in_dims=[C, L]`` with ``patch_size=1`` (token-wise linear embedding of
+    L tokens). ``causal=True`` restricts attention to earlier tokens (for
+    autoregressive-flow style usage), and ``forward`` accepts an optional
+    boolean ``padding_mask`` (True = valid token) to exclude padded tokens as
+    attention keys. Sequence length is still fixed at construction.
+
+    Note: unlike ReLU ConvNets, this network is *not* piecewise affine
+    (softmax attention, GELU, LayerNorm are smooth). Intended for density
+    estimation / anomaly detection rather than piecewise-affine verification.
+    """
+
+    def __init__(
+        self,
+        in_dims: Iterable[int],
+        patch_size: int = 4,
+        embed_dim: int = 256,
+        depth: int = 6,
+        num_heads: int = 8,
+        mlp_ratio: float = 4.0,
+        context_dim: int = 1,
+        token_size: int = 8,
+        qk_norm: bool = True,
+        causal: bool = False,
+        nonlinearity: Optional[nn.Module] = None,
+        grad_checkpointing: bool = False,
+    ):
+        """
+        Args:
+            in_dims: Input shape without batch dim, ``[D]`` (vector) or
+                ``[C, *spatial]`` with 1-3 spatial axes.
+            patch_size: Side length of (cubic) patches; must divide every
+                spatial dim. Ignored for vector inputs.
+            embed_dim: Token embedding dimension.
+            depth: Number of transformer blocks.
+            num_heads: Number of attention heads (must divide embed_dim).
+            mlp_ratio: Hidden width of the token MLP relative to embed_dim.
+            context_dim: Dimensionality of the (flattened) context variable.
+            token_size: Entries per token for vector inputs. Ignored for
+                spatial inputs.
+            qk_norm: Apply RMSNorm to per-head queries/keys.
+            causal: Restrict attention to earlier tokens (autoregressive
+                order = token order). Not needed for coupling flows, where
+                invertibility comes from the coupling mask.
+            nonlinearity: Nonlinearity of the token MLPs. Defaults to GELU.
+            grad_checkpointing: Recompute block activations in backward to
+                trade compute for memory (useful for large models).
+        """
+        super().__init__()
+
+        in_dims = [int(d) for d in in_dims]
+        if len(in_dims) < 1 or len(in_dims) > 4:
+            raise ValueError(f"Unsupported in_dims {in_dims}")
+
+        self.in_dims = in_dims
+        self.embed_dim = embed_dim
+        self.context_dim = context_dim
+        self.grad_checkpointing = grad_checkpointing
+        self.is_vector = len(in_dims) == 1
+
+        if self.is_vector:
+            dim_in = in_dims[0]
+            token_size = min(token_size, dim_in)
+            self.token_size = token_size
+            n_tokens = math.ceil(dim_in / token_size)
+            self.n_pad = n_tokens * token_size - dim_in
+            self.patch = nn.Linear(token_size, embed_dim)
+            self.head = nn.Linear(embed_dim, token_size)
+            grid_shape = (n_tokens,)
+        else:
+            c_in, *spatial = in_dims
+            rank = len(spatial)
+            if any(s % patch_size != 0 for s in spatial):
+                raise ValueError(
+                    f"patch_size {patch_size} must divide spatial dims {spatial}"
+                )
+            conv_map = {1: nn.Conv1d, 2: nn.Conv2d, 3: nn.Conv3d}
+            self.patch_size = patch_size
+            self.patch = conv_map[rank](
+                c_in, embed_dim, kernel_size=patch_size, stride=patch_size
+            )
+            self.head = nn.Linear(embed_dim, c_in * patch_size**rank)
+            grid_shape = tuple(s // patch_size for s in spatial)
+        self.grid_shape = grid_shape
+
+        self.register_buffer(
+            "pos_embed", sincos_pos_embed(embed_dim, grid_shape).unsqueeze(0)
+        )
+
+        self.ctx_embed = TokenMLP(context_dim, embed_dim, embed_dim)
+        self.null_ctx = nn.Parameter(torch.zeros(embed_dim))
+
+        self.blocks = nn.ModuleList(
+            JetBlock(
+                embed_dim,
+                num_heads,
+                mlp_ratio=mlp_ratio,
+                qk_norm=qk_norm,
+                causal=causal,
+                nonlinearity=nonlinearity,
+            )
+            for _ in range(depth)
+        )
+        self.norm_out = nn.LayerNorm(embed_dim)
+        # zero-init: coupling layer starts as the identity
+        nn.init.zeros_(self.head.weight)
+        nn.init.zeros_(self.head.bias)
+
+    def _embed_context(
+        self, context: Optional[torch.Tensor], batch_size: int, ref: torch.Tensor
+    ) -> torch.Tensor:
+        if context is None:
+            return self.null_ctx.unsqueeze(0).expand(batch_size, -1)
+        if not isinstance(context, torch.Tensor):
+            context = torch.tensor(context)
+        context = context.to(device=ref.device, dtype=ref.dtype)
+        if context.numel() == self.context_dim:
+            context = context.reshape(1, self.context_dim).expand(batch_size, -1)
+        else:
+            context = context.reshape(batch_size, self.context_dim)
+        return self.ctx_embed(context)
+
+    def _tokenize(self, x: torch.Tensor) -> torch.Tensor:
+        if self.is_vector:
+            if self.n_pad > 0:
+                x = F.pad(x, (0, self.n_pad))
+            tokens = self.patch(x.reshape(x.shape[0], -1, self.token_size))
+        else:
+            # (B, D, *grid) -> (B, N, D); flatten order matches sincos_pos_embed
+            tokens = self.patch(x).flatten(2).transpose(1, 2)
+        return tokens + self.pos_embed
+
+    def _untokenize(self, out: torch.Tensor, batch_size: int) -> torch.Tensor:
+        if self.is_vector:
+            out = out.reshape(batch_size, -1)
+            return out[:, : self.in_dims[0]] if self.n_pad > 0 else out
+        c_in, *spatial = self.in_dims
+        rank = len(spatial)
+        p = self.patch_size
+        out = out.reshape(batch_size, *self.grid_shape, c_in, *([p] * rank))
+        # (B, g_1..g_r, C, p_1..p_r) -> (B, C, g_1, p_1, ..., g_r, p_r)
+        perm = [0, 1 + rank]
+        for axis in range(rank):
+            perm += [1 + axis, 2 + rank + axis]
+        return out.permute(*perm).reshape(batch_size, c_in, *spatial)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        context: Optional[torch.Tensor] = None,
+        padding_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """
+        Args:
+            x: Input tensor of shape (batch, *in_dims).
+            context: Optional context variable (see class docstring).
+            padding_mask: Optional boolean tensor of shape (batch, n_tokens);
+                True marks valid tokens. Invalid tokens are excluded as
+                attention keys (they still attend to themselves, so their
+                outputs are defined but should be ignored downstream).
+        """
+        if self.is_vector and x.dim() == 3 and x.shape[-1] == 1:
+            x = x.squeeze(-1)
+        batch_size = x.shape[0]
+
+        tokens = self._tokenize(x)
+        c = self._embed_context(context, batch_size, tokens)
+
+        for block in self.blocks:
+            if self.grad_checkpointing and self.training and tokens.requires_grad:
+                tokens = torch.utils.checkpoint.checkpoint(
+                    block, tokens, c, padding_mask, use_reentrant=False
+                )
+            else:
+                tokens = block(tokens, c, padding_mask=padding_mask)
+
+        return self._untokenize(self.head(self.norm_out(tokens)), batch_size)

@@ -49,7 +49,27 @@ GitHub citation support and downloadable formats:
 - Uniformly scaling architectures with constant Jacobian determinant.
 - Piecewise-affine behavior for additive-coupling architectures with (leaky-)ReLU conditioners.
 - UDL-preserving structure, enabling interpretable level-set mappings between latent and data spaces.
+- Scalable conditioner networks, from piecewise-affine CNNs/MLPs to a Jet-style vision transformer with a global receptive field.
 - ONNX export support for inference graphs (`log_prob` and sampling).
+
+## Latent-space alignment
+
+Uniformly scaling flows preserve upper density level sets: data-space density level
+sets map onto latent norm level sets. The 2D GMM example below shows latent
+representations colored by the data density. For the US flow (left), the density
+decreases monotonically with the latent norm and aligns with the concentric level
+sets of the base distribution. For a non-US flow (right), high-density regions are
+skewed against the latent level-set geometry, so latent norms carry no reliable
+density information.
+
+<p align="center">
+  <img src="docs/images/contour_latent_2d_gmm_US_density.png" alt="US flow: latent representations colored by data density align with concentric latent norm level sets" width="49%">
+  <img src="docs/images/contour_latent_2d_gmm_Non-US_density.png" alt="Non-US flow: data density is misaligned with the latent norm level sets" width="49%">
+</p>
+
+This alignment is what makes latent upper density level sets (UDLs) meaningful
+proxies for data-space density level sets — the basis for the verification and
+anomaly-detection applications below.
 
 ## Architecture overview
 
@@ -57,9 +77,38 @@ CJD-Flows provides a modular implementation of US-flow components:
 
 - Flow models and building blocks in `src/usflows/flows.py`.
 - Affine and coupling transforms in `src/usflows/transforms.py`.
+- Conditioner networks in `src/usflows/networks.py`.
 - Flexible base distributions in `src/usflows/distributions.py`, including radial distributions for `L1`, `L2`, and `Linf` geometries.
 
 A key component is the **learnable radial norm distribution** (including mixture families), which closes an important expressivity gap for uniformly scaling flows while keeping latent geometry controllable.
+
+### Conditioners
+
+Additive couplings have unit Jacobian determinant *regardless of the conditioner*,
+so arbitrary modeling capacity can be spent on the conditioner network without
+losing the constant-Jacobian-determinant property. The library provides:
+
+| Conditioner | Input topology | Piecewise affine |
+|---|---|---|
+| `ConvNet` / `CondConvNet` | vector, 1–3D spatial | with (leaky-)ReLU nonlinearity |
+| `ConvNet2D` / `CondConvNet2D` | 2D images | with (leaky-)ReLU nonlinearity |
+| `JetConditioner` | vector, 1–3D spatial, sequences | no |
+
+`JetConditioner` is a scalable ViT-style transformer conditioner following the Jet
+architecture (Kolesnikov et al., 2024): patchified tokens, pre-LN attention blocks
+with QK-normalization, and a zero-initialized output head so every coupling layer
+starts as the identity. All linear maps act independently per token; self-attention
+is the only cross-token operation and provides a global receptive field in a single
+coupling layer. Context variables (e.g. the soft-training noise scale) are injected
+via adaLN-zero modulation. The trunk is domain-agnostic: sequence data is supported
+through `in_dims=[C, L]` with optional causal attention and padding masks
+(sequence length is fixed at construction).
+
+Note on piecewise affinity: with (leaky-)ReLU nonlinearities, the CNN/MLP
+conditioners keep the whole flow piecewise affine, which is what enables the
+verification workflows below. The transformer conditioner is smooth rather than
+piecewise affine (softmax attention, GELU, LayerNorm) and is intended for density
+estimation and anomaly detection.
 
 ## Evaluation suite
 
@@ -69,6 +118,8 @@ The evaluation module in `src/usflows/explib/eval.py` is tailored to radial-base
 - radiality diagnostics (sign symmetry and simplex-uniformity tests),
 - calibration-oriented latent-space analysis,
 - fine-grained mismatch diagnostics that help distinguish over- vs. under-approximation of density level sets.
+
+![Overview of the evaluation suite](docs/images/eval_suite.svg)
 
 ## Installation
 
@@ -94,6 +145,15 @@ One current use case is verification with distribution-aware input restrictions:
 For verification workflows, the library also provides simplification methods that transform trained flow models into verifier-friendly fully connected or convolutional network forms to maximize compatibility with existing tools.
 
 This turns flow density estimates into practically usable constraints for symbolic and abstract verification pipelines.
+
+### Example: Anomaly detection
+
+Because the Jacobian determinant is constant, latent norms are monotone in the data
+density: a sample is anomalous exactly when its latent representation falls outside
+a chosen norm level set. This gives calibrated, threshold-based anomaly scores
+directly from the latent space — no likelihood-ratio tricks required. High-capacity
+conditioners such as `JetConditioner` can be used freely here, since piecewise
+affinity is not needed for this use case.
 
 ## Experiments
 
