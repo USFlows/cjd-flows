@@ -1,72 +1,36 @@
-# Taken from https://github.com/marketplace/actions/install-poetry-action#testing-using-a-matrix
 name: test
 
-on: pull_request
+on:
+  pull_request:
+  push:
+    branches: [ main ]
 
 jobs:
-  linting:
-    runs-on: ubuntu-latest
-    steps:
-      #----------------------------------------------
-      #       check-out repo and set-up python
-      #----------------------------------------------
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-      #----------------------------------------------
-      #        load pip cache if cache exists
-      #----------------------------------------------
-      - uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip
-          restore-keys: ${{ runner.os }}-pip
-      #----------------------------------------------
-      #          install and run linters
-      #----------------------------------------------
-      - run: python -m pip install black flake8 isort
-      #- run: |
-      #    flake8 .
-      #    black . --check
-      #    isort .
   test:
-    needs: linting
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         os: [ "ubuntu-latest" ]
-        python-version: [ "3.9", "3.10", "3.11" ]
-        django-version: ["3", "4" ]
+        # keep in sync with requires-python in pyproject.toml (>=3.10,<3.14)
+        python-version: [ "3.10", "3.11", "3.12", "3.13" ]
     runs-on: ${{ matrix.os }}
     steps:
-      #----------------------------------------------
-      #       check-out repo and set-up python
-      #----------------------------------------------
-      - name: update apt
-        run:
-            sudo apt-get update
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Set up python ${{ matrix.python-version }}
-        id: setup-python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: install setuptools
-        run: pip${{ matrix.python-version }} install setuptools
-      #----------------------------------------------
-      # install dependencies if cache does not exist
-      #----------------------------------------------
-      - name: Install pytest
-        run: pip${{ matrix.python-version }} install pytest
-      #----------------------------------------------
-      # install your root project, if required
-      #----------------------------------------------
+          cache: pip
+      # Pre-install CPU-only torch so the project install below does not pull
+      # the multi-GB CUDA wheels onto the runner.
+      - name: Install CPU-only torch
+        run: >
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu
+          "torch>=2.7.0,<2.8.0"
+          "torchvision>=0.22.0,<0.23.0"
+          "torchaudio>=2.7.0,<2.8.0"
       - name: Install project
-        run: pip${{ matrix.python-version }} install -e .
-      #----------------------------------------------
-      #    add matrix specifics and run test suite
-      #----------------------------------------------
+        run: python -m pip install -e . pytest
       - name: Run tests
-        run: |
-          pytest tests/
-          #coverage report
+        run: python -m pytest tests/
