@@ -1,7 +1,7 @@
 import torch
 
-from src.cjd_flows.networks import JetConditioner, sincos_pos_embed
-from src.cjd_flows.transforms import MaskedCoupling
+from cjd_flows.networks import JetConditioner, sincos_pos_embed
+from cjd_flows.transforms import MaskedCoupling
 
 
 def test_sincos_pos_embed():

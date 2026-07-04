@@ -998,7 +998,7 @@ class JetConditioner(nn.Module):
     Kolesnikov et al. 2024).
 
     Shape-preserving network intended as the conditioner of a
-    :class:`~src.cjd_flows.transforms.MaskedCoupling` layer: since additive
+    :class:`~cjd_flows.transforms.MaskedCoupling` layer: since additive
     coupling has unit Jacobian determinant irrespective of the conditioner,
     arbitrary capacity (including global self-attention) can be spent here
     without affecting the constant-Jacobian-determinant property of the flow.

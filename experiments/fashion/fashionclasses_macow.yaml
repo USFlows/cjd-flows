@@ -1,9 +1,9 @@
 ---
-__object__: src.cjd_flows.explib.base.ExperimentCollection
+__object__: cjd_flows.explib.base.ExperimentCollection
 name: fashion_ablation_macow
 experiments:
   - &exp_rad_logN
-    __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
+    __object__: cjd_flows.explib.hyperopt.HyperoptExperiment
     name: cfair_full_normal
     skip: false
     device: cpu
@@ -35,7 +35,7 @@ experiments:
         __eval__: tune.choice([32])
       optim_cfg: &optim 
         optimizer:
-          __class__: src.cjd_flows.sophia.SophiaG
+          __class__: cjd_flows.sophia.SophiaG
         params:
           lr: 
             __eval__: 1e-3
@@ -43,7 +43,7 @@ experiments:
       
       model_cfg:
         type:
-          __class__: src.cjd_flows.flows.USFlow
+          __class__: cjd_flows.flows.USFlow
         params:
           soft_training: 
             __eval__: tune.choice([False])
@@ -58,7 +58,7 @@ experiments:
           lu_transform: 1
           householder: 0
           conditioner_cls:
-            __class__: src.cjd_flows.networks.ConvNet2D
+            __class__: cjd_flows.networks.ConvNet2D
           conditioner_args:
             c_in: 16
             c_hidden: 

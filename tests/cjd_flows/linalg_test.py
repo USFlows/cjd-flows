@@ -1,5 +1,5 @@
 import torch
-from src.cjd_flows.linalg import solve_triangular
+from cjd_flows.linalg import solve_triangular
 
 test_size = 10
 tol =  1e-5

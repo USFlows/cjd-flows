@@ -19,10 +19,10 @@ import ray
 from ray import tune
 from ray.air import RunConfig, session
 
-from src.cjd_flows.explib.base import Experiment
-from src.cjd_flows.explib.config_parser import from_checkpoint, create_objects_from_classes
-from src.cjd_flows.networks import AdditiveAffineNN
-from src.cjd_flows.transforms import ScaleTransform
+from cjd_flows.explib.base import Experiment
+from cjd_flows.explib.config_parser import from_checkpoint, create_objects_from_classes
+from cjd_flows.networks import AdditiveAffineNN
+from cjd_flows.transforms import ScaleTransform
 
 
 

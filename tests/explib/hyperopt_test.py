@@ -1,7 +1,7 @@
 import os
 import typing as T
 
-from src.cjd_flows.explib.config_parser import read_config
+from cjd_flows.explib.config_parser import read_config
 
 
 def test_mnist():

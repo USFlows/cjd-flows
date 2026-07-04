@@ -1,14 +1,14 @@
 ---
 # Runs a series of experiments on various synthetic 2D datasets
-__object__: src.cjd_flows.explib.base.ExperimentCollection
+__object__: cjd_flows.explib.base.ExperimentCollection
 name: synthetic_basedist_comparison
 experiments:
     - &main
-      __object__: src.cjd_flows.explib.base.ExperimentCollection
+      __object__: cjd_flows.explib.base.ExperimentCollection
       name: blobs
       experiments:
         - &main_normal
-          __object__:  src.cjd_flows.explib.hyperopt.HyperoptExperiment
+          __object__:  cjd_flows.explib.hyperopt.HyperoptExperiment
           name: normal
           scheduler: &scheduler 
             __object__: ray.tune.schedulers.ASHAScheduler
@@ -26,7 +26,7 @@ experiments:
               images: false
               scatter: true
             dataset: &dataset
-              __object__: src.cjd_flows.explib.datasets.SyntheticSplit
+              __object__: cjd_flows.explib.datasets.SyntheticSplit
               generator: circles
               params_train: &params_train
                 n_samples: 100000
@@ -48,7 +48,7 @@ experiments:
             
             model_cfg: 
               type:
-                __class__: &model src.cjd_flows.flows.NiceFlow
+                __class__: &model cjd_flows.flows.NiceFlow
               params:
                 soft_training: true
                 training_noise_prior:

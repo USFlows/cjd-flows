@@ -1,7 +1,7 @@
 import torch
 import math
 
-from src.cjd_flows.transforms import (
+from cjd_flows.transforms import (
     ScaleTransform,
     Permute,
     LUTransform,

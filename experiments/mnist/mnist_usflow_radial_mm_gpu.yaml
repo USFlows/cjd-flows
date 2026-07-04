@@ -1,9 +1,9 @@
 ---
-__object__: src.cjd_flows.explib.base.ExperimentCollection
+__object__: cjd_flows.explib.base.ExperimentCollection
 name: mnist_ablation
 experiments:
   - &exp_laplace
-    __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
+    __object__: cjd_flows.explib.hyperopt.HyperoptExperiment
     name: mnist_full_laplace
     scheduler:  
       __object__: ray.tune.schedulers.ASHAScheduler
@@ -22,7 +22,7 @@ experiments:
         images: false
         image_shape: [28, 28]
       dataset: 
-        __object__: src.cjd_flows.explib.datasets.MnistSplit
+        __object__: cjd_flows.explib.datasets.MnistSplit
         space_to_depth_factor: 4
         device: cuda  # Options: [cpu, cuda] 
         digit: 0
@@ -40,7 +40,7 @@ experiments:
       
       model_cfg: 
         type:
-          __class__: src.cjd_flows.flows.USFlow
+          __class__: cjd_flows.flows.USFlow
         params:
           soft_training: true
           training_noise_prior:
@@ -53,7 +53,7 @@ experiments:
           lu_transform: 1
           householder: 1
           conditioner_cls: 
-            __class__: src.cjd_flows.networks.ConvNet2D
+            __class__: cjd_flows.networks.ConvNet2D
           conditioner_args:
             c_in: 16
             c_hidden: 64
@@ -66,11 +66,11 @@ experiments:
           nonlinearity: 
             __eval__: tune.choice([torch.nn.ReLU()])
           base_distribution: 
-            __object__: src.cjd_flows.distributions.RadialMM
+            __object__: cjd_flows.distributions.RadialMM
             loc: 
               __eval__: torch.randn([10, 16, 7, 7]).to("cuda")
             norm_distribution: 
-              __object__: src.cjd_flows.distributions.LogNormal
+              __object__: cjd_flows.distributions.LogNormal
               loc: 
                 __eval__: torch.zeros([10, 1, 1, 1]).to("cuda")
               scale:

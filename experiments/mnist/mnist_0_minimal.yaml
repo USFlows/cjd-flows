@@ -1,9 +1,9 @@
 ---
-__object__: src.cjd_flows.explib.base.ExperimentCollection
+__object__: cjd_flows.explib.base.ExperimentCollection
 name: mnist_ablation
 experiments:
   - &exp_nice_lu_laplace
-    __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
+    __object__: cjd_flows.explib.hyperopt.HyperoptExperiment
     name: mnist_nice_lu_laplace
     scheduler: &scheduler 
       __object__: ray.tune.schedulers.ASHAScheduler
@@ -21,7 +21,7 @@ experiments:
         images: true
         "image_shape": [10, 10]
       dataset: &dataset
-        __object__: src.cjd_flows.explib.datasets.MnistSplit
+        __object__: cjd_flows.explib.datasets.MnistSplit
         digit: 0
         scale: true
       epochs: &epochs 200000
@@ -38,7 +38,7 @@ experiments:
       
       model_cfg: 
         type:
-          __class__: &model src.cjd_flows.flows.NiceFlow
+          __class__: &model cjd_flows.flows.NiceFlow
         params:
           masktype: alternate
           soft_training: false
