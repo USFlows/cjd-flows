@@ -4,6 +4,9 @@
 *.pt
 *.png
 *.jpg
+# documentation images are exempt from the global image ignore
+!docs/images/**/*.png
+!docs/images/**/*.jpg
 #
 .idea
 config_local.json
