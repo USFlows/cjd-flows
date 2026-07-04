@@ -1,7 +1,7 @@
 from typing import Dict, Iterable, Optional, Union
-from src.cjd_flows.transforms import Rotation, CompositeRotation
-from src.cjd_flows.linalg import random_orthonormal_matrix
-from src.cjd_flows.utils import inv_softplus
+from cjd_flows.transforms import Rotation, CompositeRotation
+from cjd_flows.linalg import random_orthonormal_matrix
+from cjd_flows.utils import inv_softplus
 import pyro
 import math
 

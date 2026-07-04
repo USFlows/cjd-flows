@@ -60,12 +60,9 @@ Repository = "https://github.com/USFlows/cjd-flows"
 Documentation = "https://github.com/USFlows/cjd-flows/tree/main/docs"
 
 [tool.poetry]
-packages = [{include = "src/cjd_flows"}, {include = "scripts"}]
-
-#
-#[tool.setuptools.packages.find]
-#where = ["src"] 
-#
+# src-layout: installs as the top-level `cjd_flows` package.
+# The experiment runner scripts are repo tooling and are not shipped.
+packages = [{include = "cjd_flows", from = "src"}]
 
 
 [tool.poetry.group.dev]

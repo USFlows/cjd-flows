@@ -1,9 +1,9 @@
 ---
-__object__: src.cjd_flows.explib.base.ExperimentCollection
+__object__: cjd_flows.explib.base.ExperimentCollection
 name: mnist_ablation_best_veriflow
 experiments:
   - &exp_laplace0
-    __object__: src.cjd_flows.explib.hyperopt.HyperoptExperiment
+    __object__: cjd_flows.explib.hyperopt.HyperoptExperiment
     name: mnist0
     scheduler:
       __object__: ray.tune.schedulers.ASHAScheduler
@@ -25,7 +25,7 @@ experiments:
         image_shape: [28, 28]
       dataset:
         class:
-          __class__: src.cjd_flows.explib.datasets.MnistSplit
+          __class__: cjd_flows.explib.datasets.MnistSplit
         params:
           dataloc: /home/faried/Projects/USFlows/data/mnist
           space_to_depth_factor: 4
@@ -35,14 +35,14 @@ experiments:
         __eval__: tune.choice([32])
       optim_cfg:
         optimizer:
-          __class__: src.cjd_flows.sophia.SophiaG
+          __class__: cjd_flows.sophia.SophiaG
         params:
           lr:
             __eval__: 1e-3
           weight_decay: 0.0
       model_cfg:
         type:
-          __class__: src.cjd_flows.flows.USFlow
+          __class__: cjd_flows.flows.USFlow
         params:
           soft_training: 
             __eval__: tune.choice([False])
@@ -57,7 +57,7 @@ experiments:
           lu_transform: 1
           householder: 1
           conditioner_cls:
-            __class__: src.cjd_flows.networks.ConvNet2D
+            __class__: cjd_flows.networks.ConvNet2D
           conditioner_args:
             c_in: 16
             c_hidden: 
@@ -76,14 +76,14 @@ experiments:
           nonlinearity:
             __eval__: tune.choice([torch.nn.ReLU()])
           base_distribution:
-            __object__: src.cjd_flows.distributions.RadialDistribution
+            __object__: cjd_flows.distributions.RadialDistribution
             device: cpu
             p: 
               __eval__: float("1")
             loc:
               __eval__: torch.zeros([16, 7, 7]).to("cpu")
             norm_distribution:
-              __object__: src.cjd_flows.distributions.GammaMM
+              __object__: cjd_flows.distributions.GammaMM
               concentration:
                 __eval__: torch.rand([50]).to("cpu") * 75
               rate:

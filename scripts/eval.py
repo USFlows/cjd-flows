@@ -11,8 +11,8 @@ from scipy.stats import binomtest, wilcoxon
 from sklearn.neighbors import KernelDensity
 import pandas as pd
 
-from src.cjd_flows.explib.config_parser import from_checkpoint
-from src.cjd_flows.distributions import Independent
+from cjd_flows.explib.config_parser import from_checkpoint
+from cjd_flows.distributions import Independent
 import os
 import torch
 import numpy as np
@@ -567,7 +567,7 @@ if __name__ == '__main__':
         model = from_checkpoint(pkl_path, pt_path)
 
         # Load test set
-        from src.cjd_flows.explib.datasets import MnistDequantized
+        from cjd_flows.explib.datasets import MnistDequantized
         mnisti = MnistDequantized(dataloc="/home/faried/Projects/USFlows/data/mnist", space_to_depth_factor=4, digit=i, train=False)[:1000][0]
 
         evaluator = RadialFlowEvaluator(model, mnisti)
