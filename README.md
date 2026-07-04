@@ -1,4 +1,4 @@
-# CJD-Flows: Constant-Jacobian-Density Flows
+# CJD-Flows: Constant-Jacobian-Determinant Flows
 
 CJD-Flows is a Python library for building and evaluating flow-based density estimators with a guaranteed constant Jacobian determinant. In this repository, we use **US flows** (uniformly scaling flows) as the term for the broader model class, and **CJD-Flows** as the library name.
 
