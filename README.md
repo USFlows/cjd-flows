@@ -91,7 +91,6 @@ losing the constant-Jacobian-determinant property. The library provides:
 | Conditioner | Input topology | Piecewise affine |
 |---|---|---|
 | `ConvNet` / `CondConvNet` | vector, 1–3D spatial | with (leaky-)ReLU nonlinearity |
-| `ConvNet2D` / `CondConvNet2D` | 2D images | with (leaky-)ReLU nonlinearity |
 | `JetConditioner` | vector, 1–3D spatial, sequences | no |
 
 `JetConditioner` is a scalable ViT-style transformer conditioner following the Jet
