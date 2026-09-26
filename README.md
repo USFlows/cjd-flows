@@ -62,14 +62,8 @@ sets of the base distribution. For a non-US flow (right), high-density regions a
 skewed against the latent level-set geometry, so latent norms carry no reliable
 density information.
 
-<p align="center">
-  <img src="docs/images/contour_latent_2d_gmm_US_density.png" alt="US flow: latent representations colored by data density align with concentric latent norm level sets" width="49%">
-  <img src="docs/images/contour_latent_2d_gmm_Non-US_density.png" alt="Non-US flow: data density is misaligned with the latent norm level sets" width="49%">
-</p>
-
 This alignment is what makes latent upper density level sets (UDLs) meaningful
-proxies for data-space density level sets — the basis for the verification and
-anomaly-detection applications below.
+proxies for data-space density level sets — the basis for the verification.
 
 ## Architecture overview
 
@@ -148,14 +142,6 @@ For verification workflows, the library also provides simplification methods tha
 
 This turns flow density estimates into practically usable constraints for symbolic and abstract verification pipelines.
 
-### Example: Anomaly detection
-
-Because the Jacobian determinant is constant, latent norms are monotone in the data
-density: a sample is anomalous exactly when its latent representation falls outside
-a chosen norm level set. This gives calibrated, threshold-based anomaly scores
-directly from the latent space — no likelihood-ratio tricks required. High-capacity
-conditioners such as `JetConditioner` can be used freely here, since piecewise
-affinity is not needed for this use case.
 
 ## Experiments
 
