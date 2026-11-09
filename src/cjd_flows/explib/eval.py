@@ -2,7 +2,7 @@ from typing import Optional
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from scipy.stats import wasserstein_distance, ks_2samp
+from scipy.stats import wasserstein_distance, ks_2samp, norm
 from sklearn.neighbors import KernelDensity
 from sklearn.preprocessing import StandardScaler
 from scipy.stats import chi2, binned_statistic
@@ -415,9 +415,11 @@ class RadialFlowEvaluator:
         d_yy = yy[:, None] + yy[None, :] - 2 * np.dot(Y, Y.T)
         d_xy = xx[:, None] + yy[None, :] - 2 * xy
         
-        term1 = np.sum(np.sqrt(d_xy)) / (n * m)
-        term2 = np.sum(np.sqrt(d_xx)) / (n * n)
-        term3 = np.sum(np.sqrt(d_yy)) / (m * m)
+        # Squared distances computed via the expansion above can be slightly
+        # negative due to round-off; clamp before the sqrt to avoid NaNs.
+        term1 = np.sum(np.sqrt(np.clip(d_xy, 0.0, None))) / (n * m)
+        term2 = np.sum(np.sqrt(np.clip(d_xx, 0.0, None))) / (n * n)
+        term3 = np.sum(np.sqrt(np.clip(d_yy, 0.0, None))) / (m * m)
         
         return 2 * term1 - term2 - term3
 

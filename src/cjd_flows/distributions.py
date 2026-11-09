@@ -252,19 +252,27 @@ class Categorical(DistributionModule):
 
 
 class UniformUnitLpBall(torch.distributions.Distribution):
-    """Implements a uniform distribution on the unit ball."""
+    """Implements the uniform distribution on the unit Lp *sphere*
+    ``{x : ||x||_p = 1}`` w.r.t. the cone measure.
+
+    The normaliser is ``d * vol(B_p^d)`` for all supported p (this is the
+    surface area for p = 2 and the cone-measure normaliser for p = 1, inf), which
+    is consistent with :meth:`RadialDistribution.log_delta_volume`.
+    """
 
     support = constraints.real
     has_enumerate_support = False
 
     def __init__(self, dim: int, p: float):
         self.p = p
-        self.dim = dim
+        self.dim = int(dim)
         if self.p == 1:
+            # log(d * vol(B_1^d)) = log(d * 2^d / d!)
+            # (previously (3/2) * log(d) was used instead of log(d)).
             self.log_surface_area_unit_ball = (
-                (3 / 2) * math.log(self.dim)
+                math.log(self.dim)
                 + math.log(2) * self.dim
-                - torch.log(torch.arange(1, self.dim + 1)).sum()
+                - math.lgamma(self.dim + 1)
             )
         elif self.p == 2:
             self.log_surface_area_unit_ball = (
@@ -273,6 +281,7 @@ class UniformUnitLpBall(torch.distributions.Distribution):
                 - math.lgamma(self.dim / 2)
             )
         elif self.p == math.inf:
+            # log(d * vol(B_inf^d)) = log(d * 2^d)
             self.log_surface_area_unit_ball = math.log(2) * self.dim + math.log(
                 self.dim
             )
@@ -312,7 +321,10 @@ class UniformUnitLpBall(torch.distributions.Distribution):
             boundary = torch.ones(sample_shape + (self.dim,))
             hyperplane_distribution = pyro.distributions.Uniform(-boundary, boundary)
             x = hyperplane_distribution.sample()
-            x[mask] = 1.0
+            # The extremal coordinate lies on the face +1 *or* -1 (each with
+            # probability 1/2); previously only +1 faces were ever sampled.
+            signs = torch.randint(0, 2, sample_shape + (self.dim,)) * 2.0 - 1.0
+            x[mask] = signs[mask]
         else:
             raise ValueError("p must be 1, 2, or inf.")
 
@@ -352,8 +364,10 @@ class RadialDistribution(torch.nn.Module):
         self.event_shape=loc.shape[n_batch_dims:]
         self.batch_shape=loc.shape[:n_batch_dims]
         
-        if not isinstance(p, float):
+        # Accept ints (e.g. ``p=2`` from a config file) and cast to float.
+        if isinstance(p, bool) or not isinstance(p, (int, float)):
             raise ValueError("p must be a float.")
+        p = float(p)
         if p <= 0:
             raise ValueError("p must be positive.")
 
@@ -361,7 +375,7 @@ class RadialDistribution(torch.nn.Module):
         self.loc = torch.nn.Parameter(loc.to(device))
         self.p = p
         self.n_batch_dims = n_batch_dims
-        self.dim = torch.prod(torch.tensor(loc.shape[self.n_batch_dims :]))
+        self.dim = math.prod(loc.shape[self.n_batch_dims :])
         self.shape = loc.shape
         self.unit_ball_distribution = UniformUnitLpBall(self.dim, p)
         self.to(self.device)
@@ -480,12 +494,12 @@ class RadialDistribution(torch.nn.Module):
         else:
             sample_shape = tuple(sample_shape)
 
+        # One radius per (sample, batch) element, broadcast over the event dims.
+        # (Previously ``r.repeat`` produced wrongly shaped samples for
+        # multi-dimensional events such as images.)
+        event_rank = len(self.event_shape)
         r = self.norm_distribution.sample(sample_shape).to(self.device)
-        r = r.repeat(
-            *[1 for _ in sample_shape],
-            *[1 for _ in range(self.n_batch_dims)],
-            *tuple(self.event_shape),
-        )
+        r = r.reshape(*sample_shape, *self.batch_shape, *([1] * event_rank))
 
         u = self.unit_ball_distribution.sample(
             sample_shape + tuple(self.batch_shape)
@@ -523,7 +537,7 @@ class RadialDistribution(torch.nn.Module):
             Differential volume (batch)
         """
         if p == 1:
-            # V_1^d'(r) = (2r)**(d-1) / (d-1)!
+            # V_1^d(r) = (2r)^d / d!  =>  V_1^d'(r) = 2^d r^(d-1) / (d-1)!
             log_denominator = sum([math.log(i) for i in range(1, self.dim)])
             log_dv = (
                 math.log(2) * self.dim + torch.log(r) * (self.dim - 1) - log_denominator
@@ -537,7 +551,7 @@ class RadialDistribution(torch.nn.Module):
             )
             log_dv = log_numerator - math.lgamma((self.dim / 2) + 1)
         elif p == math.inf:
-            # V_\infty^d'(r) = d * (pi)^(d/2) * r^(d-1) / Gamma(d/2 + 1)
+            # V_inf^d(r) = (2r)^d  =>  V_inf^d'(r) = d * 2^d * r^(d-1)
             log_dv = (
                 math.log(self.dim)
                 + self.dim * math.log(2)
@@ -548,46 +562,6 @@ class RadialDistribution(torch.nn.Module):
 
         return log_dv
 
-
-class Categorical(DistributionModule, torch.distributions.Categorical):
-    """Wrapper class for the Categorical distribution."""
-
-    def __init__(
-        self,
-        logits: torch.Tensor,
-        device: str = "cpu",
-        *args,
-        **kwargs
-    ):
-        """Initializes the Categorical distribution."""
-        DistributionModule.__init__(self, torch.distributions.Categorical, *args, **kwargs)
-        torch.distributions.Categorical.__init__(
-            self,
-            logits=logits,
-            validate_args=False,
-            *args,
-            **kwargs
-        )
-        self._logits = torch.nn.Parameter(logits)
-        self.register_generated_arg(
-            "logits",
-            lambda: self.logits
-        )
-        
-        self.to(device)
-        
-    @property
-    def logits(self) -> torch.Tensor:
-        """Returns the logits of the distribution."""
-        return self._logits
-    @logits.setter
-    def logits(self, value: torch.Tensor) -> None:
-        self._logits = torch.nn.Parameter(value)
-    
-    @property
-    def probs(self) -> torch.Tensor:
-        """Returns the probabilities of the distribution."""
-        return torch.nn.functional.softmax(self._logits, dim=-1)
 
 class RadialMM(DistributionModule):
 
@@ -609,8 +583,16 @@ class RadialMM(DistributionModule):
             norm_distribution: Norm distributions of (B,D).
             p: Order of norm.
             device: Compute deivce.
+
+        Raises:
+            NotImplementedError: always. The legacy implementation relied on a
+                non-existent ``register_generated_arg`` API and never worked.
         """
-        
+        raise NotImplementedError(
+            "cjd_flows.distributions.RadialMM is not functional in the legacy "
+            "API. Use cjd_flows.radial.RadialMixture instead."
+        )
+
         super().__init__(
             torch.distributions.MixtureSameFamily,
             *args,
@@ -650,26 +632,44 @@ class RadialMM(DistributionModule):
 
    
 
-class LMM(torch.nn.Module, torch.distributions.MixtureSameFamily):
-    """Wrapper class for the Laplace Mixture Model (LMM) distribution."""
+class LMM(DistributionModule):
+    """Laplace mixture model (LMM) with learnable parameters.
+
+    Args:
+        loc: component locations of shape (K, *event_shape).
+        scale: component scales of shape (K, *event_shape).
+        mixture_weights: mixture logits of shape (K,).
+        device: compute device.
+
+    *Note:* the previous implementation passed an unsupported ``n_batch_dims``
+    argument to :class:`Laplace` and could not be constructed.
+    """
 
     def __init__(
-        self, loc: torch.Tensor, scale: torch.Tensor, mixture_weights: torch.Tensor,
-        device: str = "cpu", *args, **kwargs
+        self,
+        loc: torch.Tensor,
+        scale: torch.Tensor,
+        mixture_weights: torch.Tensor,
+        device: str = "cpu",
     ):
-        """Initializes the LMM distribution."""
-        torch.nn.Module.__init__(self)
-        self._laplace_batch = Laplace(loc, scale, n_batch_dims=1)
-        self._mixture_distribution = Categorical(mixture_weights)
-        torch.distributions.MixtureSameFamily.__init__(
-            self,
-            mixture_distribution=self._mixture_distribution,
-            component_distribution=self._laplace_batch,
-            validate_args=False,
-            *args,
-            **kwargs,
-        )
+        super().__init__(torch.distributions.MixtureSameFamily)
+        self.loc = Parameter(loc)
+        self.scale_unconstrained = Parameter(inv_softplus(scale))
+        self.mixture_logits = Parameter(mixture_weights)
         self.to(device)
+
+    def _get_distribution_params(self) -> Dict[str, Distribution]:
+        components = DIndependent(
+            torch.distributions.Laplace(self.loc, softplus(self.scale_unconstrained)),
+            self.loc.dim() - 1,
+        )
+        return {
+            "mixture_distribution": torch.distributions.Categorical(
+                logits=self.mixture_logits
+            ),
+            "component_distribution": components,
+        }
+
 
 class GammaMM(DistributionModule):
     def __init__(

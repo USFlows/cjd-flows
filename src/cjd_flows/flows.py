@@ -1,6 +1,6 @@
 import numpy as np
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, default_collate
 
 from pyro import distributions as dist
 from typing import List, Dict, Literal, Any, Iterable, Optional, Type, Union, Tuple
@@ -18,6 +18,27 @@ from cjd_flows.transforms import (
     HouseholderTransform,
     SequentialAffineTransform
 )
+
+def _get_batch(data: Union[torch.Tensor, Dataset], indices: np.ndarray) -> torch.Tensor:
+    """Returns the data points ``data[indices]`` as a single tensor.
+
+    Supports tensors, datasets that accept fancy indexing (e.g.
+    :class:`torch.utils.data.TensorDataset` and the explib datasets) and generic
+    map-style datasets (item-wise access + collation). If items are tuples
+    (e.g. ``(x, label)``), only the first entry is returned.
+    """
+    if isinstance(data, torch.Tensor):
+        return data[torch.as_tensor(indices, device=data.device)]
+    try:
+        batch = data[indices]
+    except (TypeError, IndexError, KeyError, ValueError, NotImplementedError):
+        batch = default_collate([data[int(i)] for i in indices])
+    if isinstance(batch, (tuple, list)):
+        batch = batch[0]
+    if not isinstance(batch, torch.Tensor):
+        batch = torch.as_tensor(np.asarray(batch), dtype=torch.get_default_dtype())
+    return batch
+
 
 class Flow(torch.nn.Module):
     """Base implementation of a flow model"""
@@ -42,28 +63,56 @@ class Flow(torch.nn.Module):
         else:
             raise ValueError(f"Unknown export mode {self.export}")
     
-    def _forward(self, x: torch.Tensor):
+    def _default_context(
+        self, batch_size: int, device: Union[str, torch.device]
+    ) -> Optional[torch.Tensor]:
+        """Context used when none is given explicitly.
+
+        For soft-trained models (SoftFlow) the conditioners expect a noise-level
+        context; the clean model corresponds to noise level 0, so a zero context
+        of shape (batch, 1) is used. For all other models no context is used.
+        The same default is applied in every direction (forward, backward,
+        log_prob, sample) so that they are mutually consistent.
+        """
+        if getattr(self, "soft_training", False):
+            return torch.zeros(batch_size, 1, device=device)
+        return None
+
+    @staticmethod
+    def _apply_layer(layer, direction: str, x: torch.Tensor, context: Optional[torch.Tensor]):
+        fn = getattr(layer, direction)
+        if context is None:
+            return fn(x)
+        return fn(x, context=context)
+
+    def _forward(self, x: torch.Tensor, context: Optional[torch.Tensor] = None):
         """Internal forward method that applies all layers in the flow
         
         Args:
             x: input tensor to the flow.
+            context: optional context (defaults to :meth:`_default_context`).
         Returns:
             x: output tensor after applying all layers in the flow.
         """
+        if context is None:
+            context = self._default_context(x.shape[0], x.device)
         for layer in self.layers:
-            x = layer.forward(x)
+            x = self._apply_layer(layer, "forward", x, context)
         return x
 
-    def backward(self, x: torch.Tensor):
+    def backward(self, x: torch.Tensor, context: Optional[torch.Tensor] = None):
         """Internal backward method that applies all layers in the flow in reverse order
         
         Args:
             x: input tensor to the flow.
+            context: optional context (defaults to :meth:`_default_context`).
         Returns:
             x: output tensor after applying all layers in the flow in reverse order.
         """
+        if context is None:
+            context = self._default_context(x.shape[0], x.device)
         for layer in reversed(self.layers):
-            x = layer.backward(x)
+            x = self._apply_layer(layer, "backward", x, context)
         return x
 
     def __init__(
@@ -113,28 +162,48 @@ class Flow(torch.nn.Module):
     def fit(
         self,
         data_train: Dataset,
-        optim: torch.optim.Optimizer = SophiaG,
+        optim: Union[Type[torch.optim.Optimizer], torch.optim.Optimizer] = SophiaG,
         optim_params: Dict[str, Any] = None,
         batch_size: int = 32,
         shuffle: bool = True,
         gradient_clip: float = None,
         device: torch.device = None,
         epochs: int = 1,
-    ) -> float:
+        prior_weight: Optional[float] = None,
+    ) -> List[float]:
         """
         Fitting method. Allows basic configuration of the optimizer and other
         fitting parameters.
 
+        The per-batch loss is the maximum-a-posteriori objective normalised per
+        data point::
+
+            loss = mean_i(-log p(x_i)) - prior_weight * log_prior(theta)
+
+        With the default ``prior_weight = 1 / len(data_train)`` one epoch of
+        training optimises ``-(1/N) * [sum_i log p(x_i) + log_prior(theta)]``,
+        i.e. the proper (data-size normalised) log posterior. Before v1.0 the
+        prior was added with weight 1 to a *mean* NLL, i.e. it was weighted N
+        times too strongly; pass ``prior_weight=1.0`` to restore that behaviour.
+
         Args:
-            data_train: training data.
+            data_train: training data. Either a tensor of shape (N, *event_shape)
+                or a dataset whose items (or fancy-indexed batches) are tensors
+                or ``(x, y)`` tuples (only ``x`` is used).
+            optim: optimizer class or an already constructed optimizer instance.
+                Passing an instance keeps the optimizer state (e.g. momentum)
+                across several calls of ``fit``.
+            optim_params: keyword arguments for the optimizer class (ignored if
+                ``optim`` is an instance).
             batch_size: number of samples per optimization step.
-            optim: optimizer class.
-            optimizer_params: optimizer parameter dictionary.
-            jitter: Determines the amount of jitter that is added if the optimization leaves the feasible region.
+            shuffle: whether to shuffle the data in every epoch.
+            gradient_clip: max. gradient norm (no clipping if None).
+            device: training device. Defaults to mps/cuda/cpu (in that order).
             epochs: number of epochs.
+            prior_weight: weight of the log prior in the loss (see above).
 
         Returns:
-            Loss curve .
+            Loss curve (mean loss per epoch).
         """
         if device is None:
             if torch.backends.mps.is_available():
@@ -146,66 +215,58 @@ class Flow(torch.nn.Module):
 
         model = self.to(device)
 
-        if optim_params is not None:
-            optim = optim(model.parameters(), **optim_params)
+        # Create the optimizer once (or reuse a given instance) instead of
+        # re-creating it, which would reset its state.
+        if isinstance(optim, torch.optim.Optimizer):
+            optimizer = optim
         else:
-            optim = optim(model.parameters())
+            optimizer = optim(model.parameters(), **(optim_params or {}))
 
         N = len(data_train)
+        if N == 0:
+            raise ValueError("Training data is empty.")
+        if prior_weight is None:
+            prior_weight = 1.0 / N
 
         epoch_losses = []
         for _ in range(epochs):
             losses = []
             if shuffle:
-                perm = np.random.choice(N, N, replace=False)
-                data_train_shuffle = data_train[perm][0]
+                order = np.random.permutation(N)
+            else:
+                order = np.arange(N)
 
             for idx in range(0, N, batch_size):
-                end = min(idx + batch_size, N)
-                try:
-                    sample = data_train_shuffle[idx:end]
-                    if not isinstance(sample, torch.Tensor):
-                        sample = torch.Tensor(sample)  
-                except:
-                    continue
-                 
+                sample = _get_batch(data_train, order[idx : idx + batch_size])
+                sample = sample.to(device)
+
                 if self.soft_training:
                     noise = self.training_noise_prior.sample([sample.shape[0]]).to(device)
-
                     # Repeat noise for all data dimensions
-                    sigma = noise
-             
-                    r = list(sample.shape[1:])
-                    if not isinstance(r, torch.Tensor):
-                        r = torch.Tensor(r).prod()
-                    r = r.int().to(device)
-                    
-                    sigma = sigma.repeat_interleave(r)
-                    sigma = sigma.reshape(sample.shape)
-
-                    e = torch.normal(torch.zeros_like(sigma), sigma).to(device)
+                    sigma = noise.view(-1, *([1] * (sample.dim() - 1))).expand_as(sample)
+                    e = torch.normal(torch.zeros_like(sample), sigma)
                     sample = sample + e
-                    noise = noise.unsqueeze(-1)
-                    noise = noise.detach().to(device)
+                    noise = noise.unsqueeze(-1).detach()
                     # scaling of noise for the conditioning recommended by SoftFlow paper
-                    noise = noise * 2/self.training_noise_prior.high
+                    noise = noise * 2 / self.training_noise_prior.high
                 else:
                     noise = None
 
-                optim.zero_grad()
-                loss = -model.log_prob(
-                    sample, context=noise
-                ).mean() - model.log_prior()
+                optimizer.zero_grad()
+                loss = (
+                    -model.log_prob(sample, context=noise).mean()
+                    - prior_weight * model.log_prior()
+                )
                 loss.backward()
                 losses.append(float(loss.detach()))
                 if gradient_clip is not None:
                     torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
-                optim.step()
+                optimizer.step()
                 if not self.is_feasible():
                     raise RuntimeError("Model is not invertible")
- 
+
                 model.transform.clear_cache()
-            epoch_losses.append(np.mean(losses))
+            epoch_losses.append(float(np.mean(losses)))
 
         return epoch_losses
 
@@ -231,18 +292,19 @@ class Flow(torch.nn.Module):
             x: sample tensor.
         """
 
-        log_det = torch.zeros(x.shape[0]).to(x.device)
+        if context is None:
+            context = self._default_context(x.shape[0], x.device)
+        log_det = torch.zeros(x.shape[0], device=x.device)
         for layer in reversed(self.layers):
             if context is not None:
                 y = layer.backward(x, context=context)
                 log_det = log_det - layer.log_abs_det_jacobian(y, x, context=context)
-                x = y
             else:
                 y = layer.backward(x)
                 log_det = log_det - layer.log_abs_det_jacobian(y, x)
-                x = y
+            x = y
 
-        return self.base_distribution.log_prob(y) + log_det
+        return self.base_distribution.log_prob(x) + log_det
 
     def sample(
         self, sample_shape: Iterable[int] = None, context: Optional[torch.Tensor] = None
@@ -256,13 +318,7 @@ class Flow(torch.nn.Module):
             sample_shape = [1]
 
         y = self.base_distribution.sample(sample_shape)
-        for layer in self.layers: 
-            if context is not None:
-                y = layer.forward(y, context=context)
-            else:
-                y = layer.forward(y)
-
-        return y
+        return self._forward(y, context=context)
 
     def to(self, device) -> None:
         """Moves the model to the given device"""
@@ -557,44 +613,6 @@ class USFlow(Flow):
         else:
             return 0
         
-    def log_prob(
-        self, x: torch.Tensor, context: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """Returns the models log-densities for the given samples
-
-        Args:
-            x: sample tensor.
-        """
-        if self.soft_training:
-            if context is not None:
-                return super().log_prob(x, context)
-            else:
-                # implicit conditioning with noise scale 0
-                context = torch.zeros(x.shape[0]).unsqueeze(-1).to(x.device)
-                return super().log_prob(x, context)
-        else:
-            return super().log_prob(x)
-    
-    def sample(
-        self, sample_shape: Iterable[int] = None, context: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """Returns n_sample samples from the distribution
-
-        Args:
-            n_sample: sample shape.
-        """
-        if context is not None:
-            return super().sample(sample_shape, context)
-        else:
-            # if self.soft_training:
-            #     return super().sample(
-            #         sample_shape, torch.zeros(list(sample_shape)).unsqueeze(-1).to(self.device)
-            #     )
-            # else:
-            return super().sample(
-                sample_shape
-            )
-    
     def to(self, device) -> None:
         """Moves the model to the given device"""
         self.device = device
