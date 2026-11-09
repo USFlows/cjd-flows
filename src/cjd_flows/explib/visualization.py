@@ -36,7 +36,8 @@ def visualize_udl(
     p: Norm, 
     sqrt_n_sample: int = 3,
     n_udl_estimation: int = 100000,
-    saveto = None
+    saveto = None,
+    thresholds: Iterable[float] = (0.5, 0.9, 0.99),
 ):
     """ Visualizes the UDL of a model. Assumes that the UDL is of the form $p(x | |z|_p <= r)$. 
     
@@ -44,6 +45,8 @@ def visualize_udl(
         model: The model to visualize.
         p: The norm to use for the UDL.
         sqrt_n_sample: The number of samples to draw in each row and column.
+        thresholds: Probability levels of the UDLs to visualize (one column
+            each). Previously this name was used without being defined.
     
     """
     with torch.no_grad():
@@ -133,6 +136,19 @@ def udl_multisample(
     sample = torch.cat([x for x in sample], dim=0)
     
     return sample
+
+
+def nsample(model, sqrtn: int, reshape: Iterable[int] = (28, 28)) -> torch.Tensor:
+    """Draws ``sqrtn**2`` samples from ``model`` and tiles them into a single
+    ``(sqrtn * h, sqrtn * w)`` image (pixel values clipped to [0, 1]).
+
+    (Used by :func:`plot_digits`; previously referenced but not defined.)
+    """
+    with torch.no_grad():
+        sample = model.sample((sqrtn**2,))
+    sample = torch.clip(sample, 0, 1).reshape((sqrtn, sqrtn) + tuple(reshape)).cpu()
+    sample = torch.cat([x for x in sample], dim=-1)
+    return torch.cat([x for x in sample], dim=0)
 
 
 def plot_digits(models: Flow, sqrtn: int, save_to=None):

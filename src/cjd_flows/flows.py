@@ -153,7 +153,7 @@ class Flow(torch.nn.Module):
 
     def log_prior(self) -> torch.Tensor:
         """Returns the log prior of the model parameters. The model is trained in maximum posterior fashion, i.e.
-        $$argmax_{\\theta} \log p_{\\theta}(D) + \log p_{prior}(\\theta)$$ By default, this ia the constant zero, which amounts
+        $$argmax_{\\theta} \\log p_{\\theta}(D) + \\log p_{prior}(\\theta)$$ By default, this ia the constant zero, which amounts
         to maximum likelihood training (improper uniform prior).
         """
         return 0
@@ -595,7 +595,7 @@ class USFlow(Flow):
         
     def log_prior(self) -> torch.Tensor:
         """Returns the log prior of the model parameters. The model is trained in maximum posterior fashion, i.e.
-        $$argmax_{\\theta} \log p_{\\theta}(D) + \log p_{prior}(\\theta)$$ By default, this ia the constant zero, which amounts
+        $$argmax_{\\theta} \\log p_{\\theta}(D) + \\log p_{prior}(\\theta)$$ By default, this ia the constant zero, which amounts
         to maximum likelihood training (improper uniform prior).
         """
         if self.prior_scale is not None:

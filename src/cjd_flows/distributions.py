@@ -528,7 +528,7 @@ class RadialDistribution(torch.nn.Module):
         self, p: int, r: Union[float, torch.Tensor]
     ) -> Union[float, torch.Tensor]:
         """Computes the differential log-volume of an $L^p$ ball with radius r.
-        Currently, $p=1,2,\text{ or }\infty$ is implemented
+        Currently, $p=1,2,\text{ or }\\infty$ is implemented
 
         Args:
             p: p norm
