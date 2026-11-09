@@ -162,6 +162,10 @@ def main():
     amp_dtype = torch.bfloat16 if args.amp == "bf16" else None
     name = args.name or f"{args.size}-{args.variant}" + (f"-noise{args.noise}" if args.noise else "") + f"-s{args.seed}"
     out = Path(args.out) / name
+    skip_file = Path(args.out) / "SKIP"
+    if skip_file.exists() and name in skip_file.read_text().split():
+        print(f"[{name}] skipped (listed in {skip_file})", flush=True)
+        return
     out.mkdir(parents=True, exist_ok=True)
     (out / "args.json").write_text(json.dumps(vars(args), indent=2))
 
