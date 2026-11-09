@@ -43,7 +43,7 @@ def load_data(spec):
         d = spec["d"]
         g = toy.asymmetric_gmm(d)
         torch.manual_seed(1000 + spec["seed"])
-        tr, va, te = (g.sample((n,)).float() for n in (50_000, 10_000, 20_000))
+        tr, va, te = (g.sample(n).float() for n in (50_000, 10_000, 20_000))
         return tr, va, te, lambda x: g.log_prob(x.double())
     if name in toy.TOY_DATASETS:
         tr = toy.make_toy(name, 50_000, seed=10 + spec["seed"])
