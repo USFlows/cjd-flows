@@ -361,13 +361,30 @@ def _cpu_state(model: nn.Module) -> Dict[str, Tensor]:
     return {k: v.detach().to("cpu", copy=True) for k, v in model.state_dict().items()}
 
 
-def _make_optimizer(model: nn.Module, optimizer, lr, weight_decay, betas) -> torch.optim.Optimizer:
+def _make_optimizer(model: nn.Module, optimizer, lr, weight_decay, betas, scale_lr_mult: float = 1.0) -> torch.optim.Optimizer:
     params = [p for p in model.parameters() if p.requires_grad]
     if callable(optimizer) and not isinstance(optimizer, str):
         return optimizer(params)
-    decay = [p for p in params if p.dim() >= 2]
-    no_decay = [p for p in params if p.dim() < 2]
-    groups = [g for g in ({"params": decay, "weight_decay": weight_decay}, {"params": no_decay, "weight_decay": 0.0}) if g["params"]]
+    # "Scale-like" parameters: scalars (e.g. GlobalScale.log_scale) and the
+    # parameters of the base distribution. A single scale has to track the
+    # shrinking latent variance during training; Adam moves each parameter by
+    # roughly ``lr`` per step, so these get a larger learning rate.
+    base = getattr(model, "base", None)
+    special = {id(p) for p in params if p.numel() == 1}
+    if isinstance(base, nn.Module):
+        special |= {id(p) for p in base.parameters()}
+    scale = [p for p in params if id(p) in special]
+    decay = [p for p in params if p.dim() >= 2 and id(p) not in special]
+    no_decay = [p for p in params if p.dim() < 2 and id(p) not in special]
+    groups = [
+        g
+        for g in (
+            {"params": decay, "weight_decay": weight_decay},
+            {"params": no_decay, "weight_decay": 0.0},
+            {"params": scale, "weight_decay": 0.0, "lr": lr * scale_lr_mult},
+        )
+        if g["params"]
+    ]
     name = optimizer.lower()
     if name == "adamw":
         return torch.optim.AdamW(groups, lr=lr, betas=betas)
@@ -467,6 +484,8 @@ def fit(
     schedule: str = "cosine",
     min_lr_ratio: float = 0.0,
     grad_clip: Optional[float] = 1.0,
+    scale_lr_mult: float = 10.0,
+    normalize_loss: bool = True,
     ema_decay: Optional[float] = None,
     early_stopping_patience: Optional[int] = None,
     max_steps: Optional[int] = None,
@@ -502,6 +521,12 @@ def fit(
         schedule: ``"cosine"``, ``"linear"`` or ``"constant"`` after warmup.
         min_lr_ratio: final lr as a fraction of ``lr`` (cosine/linear).
         grad_clip: max gradient norm (``None`` disables clipping).
+        scale_lr_mult: learning-rate multiplier for scalar parameters (e.g. the
+            flow's global scale) and the base-distribution parameters. These
+            have to follow the latent variance as the couplings learn; with a
+            plain Adam step size they throttle training for thousands of steps.
+        normalize_loss: backpropagate the NLL in nats *per dimension*, so that
+            ``grad_clip`` does not depend on the data dimension.
         ema_decay: EMA decay (``None`` disables EMA). Validation uses the EMA weights.
         early_stopping_patience: stop after this many epochs without
             validation improvement (requires ``val_data``).
@@ -565,7 +590,7 @@ def fit(
         total_steps = min(total_steps, max_steps)
     n_train = _num_samples(train_data, batches)
 
-    opt = _make_optimizer(flow, optimizer, lr, weight_decay, betas)
+    opt = _make_optimizer(flow, optimizer, lr, weight_decay, betas, scale_lr_mult)
     warmup = warmup_steps if warmup_steps is not None else int(round(warmup_frac * total_steps))
     sched = torch.optim.lr_scheduler.LambdaLR(opt, _lr_lambda(warmup, total_steps, schedule, min_lr_ratio))
     scaler = torch.amp.GradScaler(device.type) if amp == "fp16" else None
@@ -612,6 +637,9 @@ def fit(
                 if use_prior:
                     lpr = sum(m.log_prior() for m in priors)
                     loss = nll - prior_weight * lpr / n_train
+                if normalize_loss:
+                    # nats per dimension: makes grad_clip independent of the data dimension
+                    loss = loss / x[0].numel()
 
             ok = bool(torch.isfinite(loss))
             if ok:
