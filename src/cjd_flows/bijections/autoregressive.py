@@ -16,7 +16,6 @@ import math
 from typing import Optional, Sequence, Union
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
 
 from cjd_flows.conditioners import MADE, _prepare_context, make_activation

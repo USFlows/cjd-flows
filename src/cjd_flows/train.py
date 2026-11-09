@@ -588,7 +588,7 @@ def fit(
         if context_dim < 1:
             raise ValueError("soft training requires a flow with context_dim >= 1")
         if getattr(flow, "default_context", 0.0) not in (0, 0.0):
-            warnings.warn("soft training: flow.default_context should be 0 (the clean data distribution)")
+            warnings.warn("soft training: flow.default_context should be 0 (the clean data distribution)", stacklevel=2)
 
     batches = _make_batches(train_data, batch_size, True, num_workers)
     try:
@@ -677,7 +677,7 @@ def fit(
                 consecutive_bad += 1
                 logger.warning("non-finite loss/gradient at step %d (skipped)", step)
                 if consecutive_bad >= max_nonfinite:
-                    warnings.warn(f"aborting: {consecutive_bad} consecutive non-finite steps")
+                    warnings.warn(f"aborting: {consecutive_bad} consecutive non-finite steps", stacklevel=2)
                     res.aborted = True
                     stop = True
                     break

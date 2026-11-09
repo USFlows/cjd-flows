@@ -99,7 +99,7 @@ class Bijection(nn.Module):
         return x, (-self.log_abs_det()).expand(z.shape[0])
 
     @property
-    def inv(self) -> "Bijection":
+    def inv(self) -> Bijection:
         """The inverse bijection (a lightweight view sharing parameters)."""
         return InverseBijection(self)
 

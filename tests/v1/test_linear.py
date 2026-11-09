@@ -8,7 +8,6 @@ import torch
 from cjd_flows.bijections.linear import (
     ActNorm,
     AffineFromMatrix,
-    ChannelLinear,
     FixedOrthogonal,
     GlobalScale,
     HouseholderLinear,
@@ -19,7 +18,7 @@ from cjd_flows.bijections.linear import (
     merge_linear,
 )
 from cjd_flows.core import Chain
-from cjd_flows.testing import check_bijection, jacobian_log_abs_det
+from cjd_flows.testing import check_bijection
 
 SHAPES = [(6,), (3, 4, 4), (2, 8), (2, 2, 2, 2)]
 
@@ -258,7 +257,7 @@ def test_merge_linear(shape):
         Chain(GlobalScale(shape, 1.3), LULinear(shape, identity_init=False).inv),
         Permutation(shape),
     ]
-    chain = Chain(*[_randomize(l.double()) for l in layers]).eval()
+    chain = Chain(*[_randomize(layer.double()) for layer in layers]).eval()
     merged = merge_linear(chain)
     assert len(merged) == 3
     assert isinstance(merged[0], AffineFromMatrix) and isinstance(merged[2], AffineFromMatrix)

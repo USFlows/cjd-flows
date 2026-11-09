@@ -17,13 +17,12 @@ density level sets in data space.
 
 from __future__ import annotations
 
-import math
 from typing import Optional, Tuple, Union
 
 import torch
 from torch import Tensor
 
-from ._numerics import bisect_increasing, safe_log
+from ._numerics import bisect_increasing
 from .base import RadialBase
 from .norms import NormDistribution
 

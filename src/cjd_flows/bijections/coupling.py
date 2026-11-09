@@ -20,7 +20,7 @@ Mask convention: ``1`` = conditioning (passed through), ``0`` = transformed.
 from __future__ import annotations
 
 import math
-from typing import Callable, Optional, Sequence, Tuple, Union
+from typing import Callable, Optional, Tuple, Union
 
 import torch
 from torch import Tensor, nn

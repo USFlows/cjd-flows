@@ -143,7 +143,7 @@ class TypicalityScorer:
         self.mean: Optional[float] = None
         self.std: Optional[float] = None
 
-    def fit(self, flow: nn.Module, x_ref: DataLike, batch_size: int = 1024, context: Optional[Tensor] = None) -> "TypicalityScorer":
+    def fit(self, flow: nn.Module, x_ref: DataLike, batch_size: int = 1024, context: Optional[Tensor] = None) -> TypicalityScorer:
         nll = _nll_only(flow, x_ref, batch_size, context)
         self.mean = float(nll.double().mean())
         self.std = float(nll.double().std())

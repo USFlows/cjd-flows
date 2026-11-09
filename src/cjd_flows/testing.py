@@ -90,7 +90,7 @@ def check_bijection(
     if params:
         loss = bijection(x, context).square().sum() + ladj
         grads = torch.autograd.grad(loss, params, allow_unused=True)
-        for p, g in zip(params, grads):
+        for g in grads:
             if g is not None:
                 assert torch.isfinite(g).all(), "non-finite gradient"
 
