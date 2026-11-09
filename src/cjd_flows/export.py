@@ -41,11 +41,15 @@ _IO = {
 
 
 class _Wrapper(nn.Module):
-    def __init__(self, flow: nn.Module, mode: str, with_context: bool):
+    def __init__(self, flow: nn.Module, mode: str, with_context: bool, freeze_linear: bool = False):
         super().__init__()
         self.flow = flow
         self.mode = mode
         self.with_context = with_context
+        # Optionally replace the channel-linear layers by frozen matrices (their
+        # parametrizations use triangular solves / matrix exponentials / inverses
+        # that ONNX cannot express, at least in the inverse direction).
+        self.bijection = _freeze_linear(flow.bijection) if freeze_linear else flow.bijection
 
     def _ctx(self, t: Tensor, context: Optional[Tensor]) -> Optional[Tensor]:
         if self.flow.context_dim == 0:
@@ -57,20 +61,37 @@ class _Wrapper(nn.Module):
     def forward(self, t: Tensor, context: Optional[Tensor] = None) -> Tensor:
         ctx = self._ctx(t, context)
         if self.mode == "log_prob":
-            z = self.flow.bijection(t, ctx)
-            return self.flow.base.log_prob(z) + self.flow.log_abs_det()
+            z = self.bijection(t, ctx)
+            return self.flow.base.log_prob(z) + self.bijection.log_abs_det()
         if self.mode == "forward":
-            return self.flow.bijection(t, ctx)
-        return self.flow.bijection.inverse(t, ctx)
+            return self.bijection(t, ctx)
+        return self.bijection.inverse(t, ctx)
 
 
-def export_module(flow: nn.Module, mode: str = "log_prob", with_context: Optional[bool] = None) -> nn.Module:
-    """The wrapper ``nn.Module`` that :func:`to_onnx` exports (useful for other exporters)."""
+def _freeze_linear(bijection: nn.Module) -> nn.Module:
+    from cjd_flows.bijections.linear import merge_linear
+
+    with torch.no_grad():
+        return merge_linear(bijection, min_group=1)
+
+
+def export_module(
+    flow: nn.Module, mode: str = "log_prob", with_context: Optional[bool] = None, freeze_linear: bool = False
+) -> nn.Module:
+    """The wrapper ``nn.Module`` that :func:`to_onnx` exports (useful for other exporters).
+
+    Args:
+        flow: the flow.
+        mode: one of :data:`MODES`.
+        with_context: add a ``context`` input (default: iff ``flow.context_dim > 0``).
+        freeze_linear: replace (runs of) channel-linear layers by frozen
+            :class:`~cjd_flows.bijections.AffineFromMatrix` layers (see :func:`to_onnx`).
+    """
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     if with_context is None:
         with_context = getattr(flow, "context_dim", 0) > 0
-    return _Wrapper(flow, mode, bool(with_context)).eval()
+    return _Wrapper(flow, mode, bool(with_context), freeze_linear=freeze_linear).eval()
 
 
 def _ref(flow: nn.Module) -> Tensor:
@@ -92,6 +113,7 @@ def to_onnx(
     with_context: Optional[bool] = None,
     example: Optional[Tensor] = None,
     dynamo: Optional[bool] = None,
+    freeze_linear: bool = True,
 ) -> Path:
     """Exports ``flow`` to ONNX.
 
@@ -104,19 +126,28 @@ def to_onnx(
         opset: ONNX opset (default 17 for the legacy exporter, exporter default otherwise).
         with_context: add a ``context`` input for conditional flows (default:
             ``True`` iff ``flow.context_dim > 0``).
-        example: optional example input (shape ``(B, *event_shape)``).
+        example: optional example input (shape ``(B, *event_shape)``, or
+            ``(B, *latent_shape)`` for ``"sample"``/``"inverse"``).
         dynamo: force the exporter (``None``: legacy TorchScript exporter if
             available, else dynamo).
+        freeze_linear: export the channel-linear layers (LU, orthogonal,
+            Householder, ActNorm, ...) as frozen matrices via
+            :func:`~cjd_flows.bijections.merge_linear` (consecutive ones are
+            merged). Required for parametrizations that ONNX cannot express,
+            e.g. the triangular solves of ``LULinear.inverse`` or the Cayley
+            map of ``OrthogonalLinear``.
 
     Returns:
         The path of the written file.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    wrapper = export_module(flow, mode, with_context)
+    wrapper = export_module(flow, mode, with_context, freeze_linear=freeze_linear)
     ref = _ref(flow)
     if example is None:
-        example = torch.randn(batch_size, *flow.event_shape, device=ref.device, dtype=ref.dtype)
+        # latent-input graphs take z, whose shape differs from x for shape-changing flows
+        shape = flow.event_shape if mode in ("log_prob", "forward") else getattr(flow, "latent_shape", flow.event_shape)
+        example = torch.randn(batch_size, *shape, device=ref.device, dtype=ref.dtype)
     in_name, out_name = _IO[mode]
     args = (example,)
     input_names = [in_name]

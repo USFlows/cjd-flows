@@ -365,12 +365,14 @@ def _make_optimizer(model: nn.Module, optimizer, lr, weight_decay, betas, scale_
     params = [p for p in model.parameters() if p.requires_grad]
     if callable(optimizer) and not isinstance(optimizer, str):
         return optimizer(params)
-    # "Scale-like" parameters: scalars (e.g. GlobalScale.log_scale) and the
+    # "Scale-like" parameters: 0-dim scalars (e.g. GlobalScale.log_scale) and the
     # parameters of the base distribution. A single scale has to track the
     # shrinking latent variance during training; Adam moves each parameter by
-    # roughly ``lr`` per step, so these get a larger learning rate.
+    # roughly ``lr`` per step, so these get a larger learning rate. (Tensors that
+    # merely have one element, e.g. the output bias of a conditioner with one
+    # output in 2-D, are ordinary network weights.)
     base = getattr(model, "base", None)
-    special = {id(p) for p in params if p.numel() == 1}
+    special = {id(p) for p in params if p.dim() == 0}
     if isinstance(base, nn.Module):
         special |= {id(p) for p in base.parameters()}
     scale = [p for p in params if id(p) in special]
@@ -439,8 +441,16 @@ def evaluate_nll(
     context: Optional[Tensor] = None,
     batch_context: bool = False,
     amp: Union[bool, str] = False,
+    pad_context: int = 0,
 ) -> float:
-    """Mean negative log-likelihood (nats per sample) of ``flow`` on ``data``."""
+    """Mean negative log-likelihood (nats per sample) of ``flow`` on ``data``.
+
+    Args:
+        pad_context: number of zero columns appended to contexts taken from
+            the batches (``batch_context=True``). Soft-trained conditional
+            flows use one extra column for the noise level, which is ``0``
+            for clean data.
+    """
     device = torch.device(device) if device is not None else _device_of(flow)
     dtype = _dtype_of(flow)
     was_training = flow.training
@@ -449,6 +459,8 @@ def evaluate_nll(
     try:
         for batch in _make_batches(data, batch_size, False, 0):
             x, ctx = _unpack(batch, device, dtype, batch_context)
+            if ctx is not None and pad_context > 0:
+                ctx = torch.cat([ctx, ctx.new_zeros(ctx.shape[0], pad_context)], dim=1)
             if ctx is None and context is not None:
                 ctx = context
             with _autocast(device, amp):
@@ -605,6 +617,8 @@ def fit(
     clip = grad_clip if grad_clip is not None else math.inf
     params = [p for p in flow.parameters() if p.requires_grad]
     val_bs = val_batch_size or max(batch_size, 1024)
+    # soft training appends the noise level to the batch context; validation is on clean data (σ = 0)
+    val_pad = 1 if (noise is not None and noise.uses_context and batch_context) else 0
 
     res = TrainResult()
     best = math.inf
@@ -642,19 +656,23 @@ def fit(
                     loss = loss / x[0].numel()
 
             ok = bool(torch.isfinite(loss))
+            unscaled = False
             if ok:
                 opt.zero_grad(set_to_none=True)
                 if scaler is not None:
                     scaler.scale(loss).backward()
                     scaler.unscale_(opt)
+                    unscaled = True
                 else:
                     loss.backward()
                 gnorm = torch.nn.utils.clip_grad_norm_(params, clip) if params else torch.zeros(())
                 ok = bool(torch.isfinite(gnorm))
             if not ok:
                 opt.zero_grad(set_to_none=True)
-                if scaler is not None:
-                    scaler.update()
+                if unscaled:
+                    # non-finite gradients: let the scaler lower its scale (an update without
+                    # a preceding unscale_ -- i.e. a non-finite forward loss -- would raise)
+                    scaler.update()  # type: ignore[union-attr]
                 res.skipped_steps += 1
                 consecutive_bad += 1
                 logger.warning("non-finite loss/gradient at step %d (skipped)", step)
@@ -693,7 +711,9 @@ def fit(
         if val_data is not None:
             ctx_mgr = ema.swap() if ema is not None else contextlib.nullcontext()
             with ctx_mgr:
-                val_loss = evaluate_nll(flow, val_data, val_bs, device, batch_context=batch_context, amp=amp)
+                val_loss = evaluate_nll(
+                    flow, val_data, val_bs, device, batch_context=batch_context, amp=amp, pad_context=val_pad
+                )
                 if val_loss < best:
                     best = val_loss
                     res.best_val_loss = val_loss
