@@ -8,15 +8,15 @@ OUT=${OUT:-benchmarks/runs/cifar}
 PARALLEL=${PARALLEL:-3}
 mkdir -p "$OUT/logs"
 JOBS=(
-  "small-us-gauss|--variant us-gauss --size small --epochs 16 --eval-every 2"
-  "small-us-ggmix|--variant us-ggmix --size small --epochs 16 --eval-every 2"
-  "small-affine|--variant affine --size small --epochs 16 --eval-every 2"
-  "medium-us-ggmix-noise|--variant us-ggmix --size medium --epochs 10 --eval-every 1 --noise 0.05"
-  "small-us-spline|--variant us-spline --size small --epochs 16 --eval-every 2"
-  "small-us-mono|--variant us-mono --size small --epochs 16 --eval-every 2"
-  "medium-us-ggmix|--variant us-ggmix --size medium --epochs 10 --eval-every 2"
-  "medium-us-gauss|--variant us-gauss --size medium --epochs 10 --eval-every 2"
-  "medium-affine|--variant affine --size medium --epochs 10 --eval-every 2"
+  "small-us-gauss|--variant us-gauss --size small --epochs 24 --eval-every 2"
+  "small-us-ggmix|--variant us-ggmix --size small --epochs 24 --eval-every 2"
+  "small-affine|--variant affine --size small --epochs 24 --eval-every 2"
+  "medium-us-ggmix-noise|--variant us-ggmix --size medium --epochs 12 --eval-every 1 --noise 0.05"
+  "small-us-spline|--variant us-spline --size small --epochs 24 --eval-every 2"
+  "small-us-mono|--variant us-mono --size small --epochs 24 --eval-every 2"
+  "medium-us-ggmix|--variant us-ggmix --size medium --epochs 12 --eval-every 2"
+  "medium-us-gauss|--variant us-gauss --size medium --epochs 12 --eval-every 2"
+  "medium-affine|--variant affine --size medium --epochs 12 --eval-every 2"
 )
 run_job() {
   local name=${1%%|*} args=${1#*|}

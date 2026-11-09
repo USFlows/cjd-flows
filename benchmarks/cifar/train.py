@@ -142,8 +142,9 @@ def main():
     ap.add_argument("--size", default="small", choices=list(SIZES))
     ap.add_argument("--epochs", type=float, default=20)
     ap.add_argument("--batch-size", type=int, default=128)
-    ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--lr", type=float, default=5e-4)
     ap.add_argument("--base-lr-mult", type=float, default=10.0, help="lr multiplier for base-distribution params")
+    ap.add_argument("--scale-lr-mult", type=float, default=20.0, help="lr multiplier for the global scale")
     ap.add_argument("--weight-decay", type=float, default=1e-5)
     ap.add_argument("--warmup", type=int, default=1000)
     ap.add_argument("--grad-clip", type=float, default=1.0)
@@ -152,6 +153,7 @@ def main():
     ap.add_argument("--amp", default="bf16", choices=["bf16", "none"])
     ap.add_argument("--eval-every", type=float, default=2.0, help="epochs")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--conditioner", default="jet", choices=["jet", "conv"])
     ap.add_argument("--name", default=None)
     ap.add_argument("--out", default="benchmarks/runs/cifar")
     args = ap.parse_args()
@@ -185,15 +187,29 @@ def main():
     latent_shape = tmp.latent_shape
     del tmp
     base = make_base(args.variant, latent_shape)
-    flow = build_flow(args.variant, args.size, base=base, seed=args.seed).to(device)
+    flow = build_flow(args.variant, args.size, base=base, seed=args.seed, conditioner=args.conditioner).to(device)
+    # Data-dependent init of the global scale (MLE for fixed preceding layers;
+    # at init all couplings are the identity).
+    with torch.no_grad():
+        xi = dequantize(xtr[:4096]).to(device)
+        h = xi
+        layers = list(flow.bijection)
+        for b in layers[:-1]:
+            h = b(h)
+        c = layers[-1].set_from_latents(h, method="mle")
+    print(f"[{name}] init global scale c={c:.4f}", flush=True)
     n_params = sum(p.numel() for p in flow.parameters())
     print(f"[{name}] params={n_params/1e6:.1f}M latent={latent_shape}", flush=True)
     log(0, n_params=n_params)
 
     base_params = list(flow.base.parameters())
-    base_ids = {id(p) for p in base_params}
-    other = [p for p in flow.parameters() if id(p) not in base_ids]
-    groups = [{"params": other, "weight_decay": args.weight_decay}]
+    # Scalar global scale: Adam moves a parameter by ~lr per step, so a single
+    # scale that has to track the shrinking latent variance needs a larger lr.
+    scale_params = [m.log_scale for m in flow.modules() if m.__class__.__name__ == "GlobalScale"]
+    special = {id(p) for p in base_params + scale_params}
+    other = [p for p in flow.parameters() if id(p) not in special]
+    groups = [{"params": other, "weight_decay": args.weight_decay},
+              {"params": scale_params, "weight_decay": 0.0, "lr": args.lr * args.scale_lr_mult}]
     if base_params:
         groups.append({"params": base_params, "weight_decay": 0.0, "lr": args.lr * args.base_lr_mult})
     opt = torch.optim.AdamW(groups, lr=args.lr, betas=(0.9, 0.95))
@@ -231,7 +247,7 @@ def main():
             flow.train()
             with torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype is not None):
                 lp = flow.log_prob(x).float()
-            loss = -lp.mean()
+            loss = -lp.mean() / D  # nats per dim: keeps grad norms O(1)
             if not torch.isfinite(loss):
                 bad += 1
                 opt.zero_grad(set_to_none=True)
@@ -248,7 +264,7 @@ def main():
             run_loss.append(loss.detach())
             step += 1
             if step % 100 == 0:
-                l = torch.stack(run_loss).mean().item()
+                l = torch.stack(run_loss).mean().item() * D
                 run_loss = []
                 bpd = l / (D * math.log(2)) + LOG2_128
                 scale = None

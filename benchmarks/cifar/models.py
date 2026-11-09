@@ -82,7 +82,16 @@ class VariableDetFlow(Flow):
         return self.base.log_prob(z) + ld
 
 
-def make_conditioner(embed_dim: int, depth: int, context_dim: int = 0):
+def make_conditioner(embed_dim: int, depth: int, context_dim: int = 0, kind: str = "jet"):
+    if kind == "conv":
+        from cjd_flows.conditioners import ConvNet
+
+        def conv_factory(shape_in, shape_out):
+            return ConvNet(shape_in[0], shape_out[0], spatial_ndim=len(shape_in) - 1,
+                           hidden=(embed_dim,) * (depth + 1), kernel_size=3, context_dim=context_dim)
+
+        return conv_factory
+
     def factory(shape_in, shape_out):
         return JetConditioner(
             list(shape_in),
@@ -104,6 +113,7 @@ def build_flow(
     base: Optional[nn.Module] = None,
     context_dim: int = 0,
     seed: int = 0,
+    conditioner: str = "jet",
 ) -> Flow:
     """Builds one of the study variants. ``base`` overrides the base distribution."""
     torch.manual_seed(seed)
@@ -114,7 +124,7 @@ def build_flow(
         sq = Squeeze(ev, 2)
         layers.append(sq)
         ev = tuple(sq.out_shape)
-    cond = make_conditioner(E, depth, context_dim)
+    cond = make_conditioner(E, depth, context_dim, conditioner)
     n_spatial = 0
     for i in range(L):
         if i % 5 == 4:
