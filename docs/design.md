@@ -50,10 +50,12 @@ becomes an optional `[legacy]` extra.
 
 ## Theory notes for implementers
 
-* Draxler et al. (ICML 2024): volume-preserving flows with a fixed base are
-  not KL-universal. The invariant is the distribution of density values
-  (`μ(t) = vol{p>t}`). A learnable 1-D radial (norm) distribution closes this
-  gap. The choice of `p` in the Lp norm does not change expressivity.
+* A constant-Jacobian flow cannot change the distribution of density values
+  of its base (`μ(t) = vol{p>t}` is invariant up to the global scale). The
+  learnable 1-D norm distribution of the radial base (introduced with
+  VeriFlow) removes this limitation. Draxler et al. (ICML 2024) prove the
+  corresponding non-universality of volume-preserving flows with a fixed
+  base. The choice of `p` in the Lp norm does not change expressivity.
 * Radial profile: `h(r) = p_R(r) / (d V_p r^{d-1})`, with `V_p = (2Γ(1+1/p))^d / Γ(1+d/p)` and `V_∞ = 2^d`. Use `lgamma`; never form `r^{d-1}`.
 * Volume coordinate `t = V_p r^d`: `p_T(t) = h(r)`. A radially *decreasing*
   base corresponds to a decreasing 1-D density in `t`.

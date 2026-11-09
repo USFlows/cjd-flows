@@ -15,11 +15,14 @@ A constant determinant gives three things:
 * **Stable training.** Additive and volume-preserving layers do not suffer
   from exploding or vanishing Jacobians.
 
-The library's main ingredient is a **learnable radial base distribution**. By
-Draxler et al. (ICML 2024), volume-preserving flows with a fixed base are not
-universal: the distribution of density values is invariant under them. A
-learnable 1-D norm distribution of an Lp-radial base removes exactly this
-obstruction while keeping the level-set geometry intact.
+The library's main ingredient is the **learnable radial base distribution**
+introduced with VeriFlow: an Lp-radial base whose 1-D norm distribution is
+learned jointly with the flow. A uniformly scaling flow cannot change the
+distribution of density values of its base, so with a fixed base its
+expressivity is limited (Draxler et al., ICML 2024, prove that
+volume-preserving flows with a fixed base are not universal). The learnable
+norm distribution removes exactly this limitation while keeping the latent
+level-set geometry intact.
 
 ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
 ![ONNX](https://img.shields.io/badge/ONNX-005CED?logo=onnx&logoColor=white)

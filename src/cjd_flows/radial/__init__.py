@@ -2,8 +2,9 @@
 
 A radial base ``p(z) = h(||z - loc||_p)`` is described by the law of its
 radius ``R``; ``h(r) = p_R(r) / (d V_p r^{d-1})``. Learning the 1-D law of
-``R`` closes the expressivity gap of volume-preserving / constant-Jacobian
-flows (Draxler et al., ICML 2024), and monotone profiles make every density
+``R`` closes the expressivity gap of constant-Jacobian flows with a fixed
+base (cf. the non-universality result of Draxler et al., ICML 2024), and
+monotone profiles make every density
 level set an Lp ball (see :mod:`cjd_flows.radial.levelsets`).
 
 Example::

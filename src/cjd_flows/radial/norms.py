@@ -1054,9 +1054,9 @@ def fit_norm_to_radii(
     """Maximum-likelihood refit of a norm distribution to observed radii.
 
     Typical use: after training a flow, refit the base's norm law to the
-    latent norms ``||f(x) - loc||_p`` of the training data (Draxler et al.,
-    2024 suggest such a post-hoc 1-D correction since it closes the
-    expressivity gap of volume-preserving flows).
+    latent norms ``||f(x) - loc||_p`` of the training data (a cheap post-hoc
+    1-D correction of the base; joint training of the norm distribution is
+    the default).
 
     Args:
         norm: the norm distribution (modified in place).
