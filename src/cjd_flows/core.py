@@ -247,6 +247,9 @@ class Flow(nn.Module):
         default_context: value used when ``context`` is omitted but
             ``context_dim > 0`` (``0.0`` for soft training, where sigma=0 is
             the clean data distribution).
+        event_shape: shape of a single data point. Defaults to the base
+            distribution's event shape; required if the bijection changes the
+            shape (e.g. contains a ``Squeeze``).
 
     The model computes ``log p(x) = log p_Z(f(x)) + log|det J_f|``.
     """
@@ -257,8 +260,10 @@ class Flow(nn.Module):
         base: BaseDistribution,
         context_dim: int = 0,
         default_context: Optional[float] = 0.0,
+        event_shape: Optional[ShapeLike] = None,
     ):
         super().__init__()
+        self._event_shape = None if event_shape is None else as_shape(event_shape)
         if not isinstance(bijection, Bijection):
             bijection = Chain(*bijection)
         self.bijection = bijection
@@ -269,6 +274,14 @@ class Flow(nn.Module):
     # ------------------------------------------------------------------ utils
     @property
     def event_shape(self) -> Tuple[int, ...]:
+        """Shape of a single data point."""
+        if self._event_shape is not None:
+            return self._event_shape
+        return tuple(self.base.event_shape)
+
+    @property
+    def latent_shape(self) -> Tuple[int, ...]:
+        """Shape of a single latent point."""
         return tuple(self.base.event_shape)
 
     @property
