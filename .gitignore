@@ -78,3 +78,6 @@ docs/_build/
 .ipynb_checkpoints/
 profile_default/
 ipython_config.py
+
+# benchmark outputs
+/benchmarks/runs/
