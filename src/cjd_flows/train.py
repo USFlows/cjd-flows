@@ -234,19 +234,30 @@ class TrainResult:
     restored: str = "last"
     step_losses: List[Tuple[int, float]] = field(default_factory=list)
 
-    def bits_per_dim(self, dim: int, preprocessing_log_det: float = 0.0, which: str = "val") -> List[float]:
+    def bits_per_dim(
+        self, dim: int, preprocessing_log_det: Optional[float] = None, which: str = "val", n_bins: int = 256
+    ) -> List[float]:
         """Converts the recorded losses (``which`` = ``"val"`` or ``"train"``) to bits/dim.
 
         ``preprocessing_log_det`` is ``log|det ∂y/∂x̃|`` from the raw (dequantized)
-        data ``x̃`` to model space ``y``; see :func:`cjd_flows.data.bits_per_dim`.
+        data ``x̃ ∈ [0, n_bins)^D`` to model space ``y``; ``None`` assumes
+        ``y = x̃ / n_bins``. See :func:`cjd_flows.data.bits_per_dim`.
         """
         losses = self.val_losses if which == "val" else self.train_losses
-        return [nats_to_bits_per_dim(v, dim, preprocessing_log_det) for v in losses]
+        return [nats_to_bits_per_dim(v, dim, preprocessing_log_det, n_bins) for v in losses]
 
 
-def nats_to_bits_per_dim(nll_nats: Union[float, Tensor], dim: int, preprocessing_log_det: float = 0.0):
-    """``(nll − log|det ∂y/∂x̃|) / (D ln 2)`` (nll in nats per sample)."""
-    return (nll_nats - preprocessing_log_det) / (dim * math.log(2.0))
+def nats_to_bits_per_dim(
+    nll_nats: Union[float, Tensor], dim: int, preprocessing_log_det: Optional[float] = None, n_bins: int = 256
+):
+    """``(nll − log|det ∂y/∂x̃|) / (D ln 2)`` (nll in nats per sample).
+
+    Same convention as :func:`cjd_flows.data.bits_per_dim` (``None`` means the
+    model data is ``x̃ / n_bins ∈ [0, 1)^D``).
+    """
+    from cjd_flows.data.preprocess import bits_per_dim
+
+    return bits_per_dim(-nll_nats, dim, preprocessing_log_det, n_bins)
 
 
 class _IndexBatcher:

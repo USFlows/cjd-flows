@@ -328,8 +328,9 @@ def test_amp_and_options(amp):
 
 def test_bits_per_dim_helper():
     res = TrainResult(val_losses=[8 * math.log(2) * 3])
-    assert res.bits_per_dim(3) == [pytest.approx(8.0)]
+    assert res.bits_per_dim(3, 0.0) == [pytest.approx(8.0)]  # raw [0,256) model space
     assert nats_to_bits_per_dim(0.0, 4, -4 * math.log(256)) == pytest.approx(8.0)
+    assert nats_to_bits_per_dim(0.0, 4) == pytest.approx(8.0)  # default: model space [0,1)
 
 
 def test_flow_fit_method():

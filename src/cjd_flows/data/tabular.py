@@ -108,10 +108,83 @@ def _power(raw: Path):
     return (train - mu) / s, (val - mu) / s, (test - mu) / s
 
 
-def _gas(raw: Path):
+def _read_legacy_frame_pickle(path: Path):
+    """Reads the pandas-0.14 / Python-2 DataFrame pickle of the GAS data.
+
+    Modern pandas cannot unpickle it (``pandas.core.index`` no longer exists).
+    A restricted unpickler maps the few referenced globals to inert stubs (no
+    arbitrary code is executed) and the frame is rebuilt from the block data.
+    """
+    import pickle
+
     import pandas as pd
 
-    data = pd.read_pickle(raw / "data/gas/ethylene_CO.pickle")
+    try:
+        from numpy._core.multiarray import _reconstruct
+    except ImportError:  # numpy < 2
+        from numpy.core.multiarray import _reconstruct
+
+    class _Stub:
+        def __init__(self, *args):
+            self.args = args
+
+        def __setstate__(self, state):
+            self.state = state
+
+    def _new_index(cls, d):
+        return d["data"] if isinstance(d, dict) else d
+
+    allowed = {
+        ("numpy.core.multiarray", "_reconstruct"): _reconstruct,
+        ("numpy", "ndarray"): np.ndarray,
+        ("numpy", "dtype"): np.dtype,
+        ("__builtin__", "slice"): slice,
+        ("builtins", "slice"): slice,
+        ("pandas.core.index", "_new_Index"): _new_index,
+    }
+
+    class _Unpickler(pickle.Unpickler):
+        def find_class(self, module, name):
+            if (module, name) in allowed:
+                return allowed[(module, name)]
+            if module.startswith("pandas."):
+                return type(name, (_Stub,), {})
+            raise pickle.UnpicklingError(f"refusing to load global {module}.{name}")
+
+    with open(path, "rb") as f:
+        frame = _Unpickler(f, encoding="latin1").load()
+    mgr_state = frame.state["_data"].state
+
+    def find(obj):
+        if isinstance(obj, dict):
+            if "axes" in obj and "blocks" in obj:
+                return obj
+            for v in obj.values():
+                r = find(v)
+                if r is not None:
+                    return r
+        if isinstance(obj, (tuple, list)):
+            for v in obj:
+                r = find(v)
+                if r is not None:
+                    return r
+        return None
+
+    st = find(mgr_state)
+    if st is None:
+        raise ValueError("unsupported legacy pandas pickle layout")
+    items = [str(c) for c in np.asarray(st["axes"][0])]
+    n = len(np.asarray(st["axes"][1]))
+    out = np.empty((n, len(items)))
+    for blk in st["blocks"]:
+        locs = blk["mgr_locs"]
+        idx = np.arange(len(items))[locs] if isinstance(locs, slice) else np.asarray(locs)
+        out[:, idx] = np.asarray(blk["values"], dtype=np.float64).reshape(len(idx), n).T
+    return pd.DataFrame(out, columns=items)
+
+
+def _gas(raw: Path):
+    data = _read_legacy_frame_pickle(raw / "data/gas/ethylene_CO.pickle")
     data = data.drop(columns=["Meth", "Eth", "Time"])
 
     def corr_numbers(df):
