@@ -108,13 +108,13 @@ def download_url(
             if progress:
                 print(file=sys.stderr)
             if total is not None and done < total:
-                raise IOError(f"incomplete download ({done} < {total} bytes)")
+                raise OSError(f"incomplete download ({done} < {total} bytes)")
             if md5 is not None and md5sum(part) != md5:
                 part.unlink()
-                raise IOError(f"MD5 mismatch for {url}")
+                raise OSError(f"MD5 mismatch for {url}")
             part.replace(dest)
             return dest
-        except (OSError, IOError) as e:  # urllib errors derive from OSError
+        except OSError as e:  # urllib errors derive from OSError
             last_err = e
             if progress:
                 print(f"\n[cjd_flows] download attempt {attempt + 1} failed: {e}", file=sys.stderr)

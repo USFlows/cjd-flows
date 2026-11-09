@@ -99,7 +99,7 @@ class Bijection(nn.Module):
         return x, (-self.log_abs_det()).expand(z.shape[0])
 
     @property
-    def inv(self) -> "Bijection":
+    def inv(self) -> Bijection:
         """The inverse bijection (a lightweight view sharing parameters)."""
         return InverseBijection(self)
 
@@ -235,6 +235,29 @@ class StandardNormal(BaseDistribution):
         return torch.randn(shape, device=self._dummy.device, dtype=self._dummy.dtype)
 
 
+def _input_event_shape(bijection: Bijection) -> Optional[Tuple[int, ...]]:
+    """Event shape expected by ``bijection`` (``None`` if no layer declares one).
+
+    Uses the ``event_shape`` attribute of the first layer of (nested) chains;
+    for an inverted shape-changing layer the input is its ``out_shape``.
+    """
+    if isinstance(bijection, Chain):
+        return _input_event_shape(bijection.bijections[0]) if len(bijection) else None
+    if isinstance(bijection, InverseBijection):
+        inner = bijection.bijection
+        shape = getattr(inner, "out_shape", None)
+        if shape is None:
+            return _input_event_shape(inner) if not isinstance(inner, Chain) else None
+        return as_shape(shape)
+    shape = getattr(bijection, "event_shape", None)
+    if shape is None:
+        return None
+    try:
+        return as_shape(shape)
+    except (TypeError, ValueError):
+        return None
+
+
 class Flow(nn.Module):
     """A normalizing flow with constant Jacobian determinant.
 
@@ -247,9 +270,11 @@ class Flow(nn.Module):
         default_context: value used when ``context`` is omitted but
             ``context_dim > 0`` (``0.0`` for soft training, where sigma=0 is
             the clean data distribution).
-        event_shape: shape of a single data point. Defaults to the base
-            distribution's event shape; required if the bijection changes the
-            shape (e.g. contains a ``Squeeze``).
+        event_shape: shape of a single data point. Defaults to the
+            ``event_shape`` of the first layer of the bijection (e.g. the input
+            shape of a leading ``Squeeze``) and otherwise to the base
+            distribution's event shape. Pass it explicitly if the first layer
+            does not declare its input shape but the bijection changes the shape.
 
     The model computes ``log p(x) = log p_Z(f(x)) + log|det J_f|``.
     """
@@ -263,9 +288,20 @@ class Flow(nn.Module):
         event_shape: Optional[ShapeLike] = None,
     ):
         super().__init__()
-        self._event_shape = None if event_shape is None else as_shape(event_shape)
         if not isinstance(bijection, Bijection):
             bijection = Chain(*bijection)
+        if event_shape is None:
+            # A shape-changing first layer (e.g. ``Squeeze``) knows the data shape;
+            # falling back to the base's shape would silently scramble samples.
+            event_shape = _input_event_shape(bijection)
+        self._event_shape = None if event_shape is None else as_shape(event_shape)
+        latent = getattr(base, "event_shape", None)
+        if self._event_shape is not None and latent is not None:
+            if math.prod(self._event_shape) != math.prod(as_shape(latent)):
+                raise ValueError(
+                    f"event_shape {self._event_shape} and the base's event_shape "
+                    f"{tuple(latent)} have different sizes"
+                )
         self.bijection = bijection
         self.base = base
         self.context_dim = context_dim

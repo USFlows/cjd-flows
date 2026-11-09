@@ -181,7 +181,7 @@ class Standardize(Preprocessing):
         self.std = std
         self.eps = eps
 
-    def fit(self, x: Tensor, unbiased: bool = False) -> "Standardize":
+    def fit(self, x: Tensor, unbiased: bool = False) -> Standardize:
         x = x.double()
         self.mean = x.mean(0).float()
         self.std = x.std(0, unbiased=unbiased).clamp_min(self.eps).float()

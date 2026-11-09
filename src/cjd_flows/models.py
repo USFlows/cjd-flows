@@ -34,8 +34,16 @@ from cjd_flows.bijections.linear import (
     OrthogonalLinear,
     Permutation,
 )
-from cjd_flows.conditioners import MLP, MADE, ConvNet, JetConditioner
-from cjd_flows.core import BaseDistribution, Bijection, Chain, Flow, ShapeLike, StandardNormal, as_shape
+from cjd_flows.conditioners import MADE, MLP, ConvNet, JetConditioner
+from cjd_flows.core import (
+    BaseDistribution,
+    Bijection,
+    Chain,
+    Flow,
+    ShapeLike,
+    StandardNormal,
+    as_shape,
+)
 
 BASES = (
     "gaussian",
@@ -147,8 +155,10 @@ def _conditioner_factory(
             i[0], o[0], spatial_ndim=len(i) - 1, hidden=hidden, activation=activation, context_dim=context_dim, **kw
         )
     if conditioner == "jet":
+        jet_kw = dict(kw)
+        patch_size = jet_kw.pop("patch_size", 1)  # not popped inside the factory: it may be called repeatedly
         return lambda i, o: JetConditioner(
-            list(i), out_dim=o[0], context_dim=context_dim, patch_size=kw.pop("patch_size", 1), **kw
+            list(i), out_dim=o[0], context_dim=context_dim, patch_size=patch_size, **jet_kw
         )
     raise ValueError(f"unknown conditioner {conditioner!r}")
 

@@ -41,9 +41,12 @@ from ._numerics import (
     GridTable,
     bisect_increasing,
     inverse_trigamma,
+    lgamma,
     log_panel_integrals,
+    logcumsumexp,
     make_table,
     safe_log,
+    searchsorted_right,
     table_cdf,
     table_icdf,
 )
@@ -342,7 +345,7 @@ class GeneralizedGammaMixture(NormDistribution):
         log_a, log_b = self._shape_params()
         a, b = log_a.exp(), log_b.exp()
         x = s.unsqueeze(-1) - self.log_theta  # (..., K)
-        base = torch.log_softmax(self.logits, -1) + log_b - torch.lgamma(a / b) - torch.exp(b * x)
+        base = torch.log_softmax(self.logits, -1) + log_b - lgamma(a / b) - torch.exp(b * x)
         return base, a, x, log_a
 
     def log_prob_log_radius(self, s: Tensor) -> Tensor:
@@ -673,7 +676,7 @@ class StudentTNorm(NormDistribution):
         alpha = self.d / self.beta
         bp = nu / self.beta
         log_x = self.beta * (s - self.log_theta) - self.log_df
-        lbeta = math.lgamma(alpha) + torch.lgamma(bp) - torch.lgamma(alpha + bp)
+        lbeta = math.lgamma(alpha) + lgamma(bp) - lgamma(alpha + bp)
         return alpha, bp, log_x, lbeta
 
     def log_prob_log_radius(self, s: Tensor) -> Tensor:
@@ -776,16 +779,16 @@ class KhinchineNorm(NormDistribution):
         panels = log_panel_integrals(grid, g_grid)  # (N-1,)
         tail = g_grid[-1:] - math.log(d)  # ∫ beyond the grid, assuming q flat there
         # suffix[j] = log(Σ_{i >= j} panel_i + tail), j = 0..N-1
-        suffix = torch.logcumsumexp(torch.cat([panels, tail]).flip(0), 0).flip(0)
+        suffix = logcumsumexp(torch.cat([panels, tail]).flip(0), 0).flip(0)
 
         g_s = self.mixing.log_prob_log_radius(flat) - d * (flat - c)
-        j = torch.searchsorted(grid.contiguous(), flat.detach().contiguous(), right=True)  # first σ_j > s
+        j = searchsorted_right(grid, flat.detach())  # first σ_j > s
         n = grid.shape[0]
         inside = j < n
         jc = j.clamp(max=n - 1)
         nodes = torch.stack([flat, torch.maximum(grid[jc], flat)], dim=-1)
         partial = log_panel_integrals(nodes, torch.stack([g_s, g_grid[jc]], dim=-1)).squeeze(-1)
-        total_inside = torch.logaddexp(partial, suffix[jc])
+        total_inside = torch.logsumexp(torch.stack([partial, suffix[jc]]), dim=0)  # (ONNX has no logaddexp)
         total = torch.where(inside, total_inside, g_s - math.log(d))
         return (math.log(d) + d * (flat - c) + total).reshape(shape)
 

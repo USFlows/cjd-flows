@@ -109,7 +109,7 @@ def eight_gaussians(n: int, seed: GenLike = None) -> Tensor:
     return _out(x / 1.414)
 
 
-def eight_gaussians_mixture() -> "GaussianMixture":
+def eight_gaussians_mixture() -> GaussianMixture:
     """The exact density of :func:`eight_gaussians` as a :class:`GaussianMixture`."""
     means = _eight_centers() / 1.414
     var = torch.full((8, 2), (_EIGHT_STD / 1.414) ** 2, dtype=torch.float64)

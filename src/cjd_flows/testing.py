@@ -15,7 +15,7 @@ from typing import Optional
 import torch
 from torch import Tensor
 
-from cjd_flows.core import Bijection, Flow
+from cjd_flows.core import Bijection, Flow, _zero_like_params
 
 
 def jacobian_log_abs_det(f, x: Tensor) -> Tensor:
@@ -90,7 +90,7 @@ def check_bijection(
     if params:
         loss = bijection(x, context).square().sum() + ladj
         grads = torch.autograd.grad(loss, params, allow_unused=True)
-        for p, g in zip(params, grads):
+        for g in grads:
             if g is not None:
                 assert torch.isfinite(g).all(), "non-finite gradient"
 
@@ -99,11 +99,18 @@ def check_flow_normalization(flow: Flow, n: int = 200_000, radius: float = 6.0) 
     """Monte-Carlo estimate of ``∫ p(x) dx`` over a box (for 1D/2D flows).
 
     Returns the estimate; a well-defined flow yields a value close to 1 if the
-    box covers (almost) all the mass.
+    box covers (almost) all the mass. The flow is evaluated in eval mode (so
+    e.g. :class:`~cjd_flows.bijections.ActNorm` is not data-initialized on the
+    box samples); its training mode is restored afterwards.
     """
     d = flow.dim
-    ref = next(flow.parameters())
+    ref = _zero_like_params(flow)
     x = (torch.rand(n, d, dtype=ref.dtype, device=ref.device) * 2 - 1) * radius
-    with torch.no_grad():
-        p = flow.log_prob(x.reshape(n, *flow.event_shape)).exp()
+    was_training = flow.training
+    flow.eval()
+    try:
+        with torch.no_grad():
+            p = flow.log_prob(x.reshape(n, *flow.event_shape)).exp()
+    finally:
+        flow.train(was_training)
     return float(p.mean() * (2 * radius) ** d)

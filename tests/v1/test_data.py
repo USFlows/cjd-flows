@@ -15,8 +15,8 @@ from cjd_flows.data import (
     default_root,
     to_symmetric,
     to_unit_interval,
+    toy,
 )
-from cjd_flows.data import toy
 from cjd_flows.testing import jacobian_log_abs_det
 
 

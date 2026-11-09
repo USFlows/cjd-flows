@@ -63,21 +63,21 @@ class RadialBase(BaseDistribution):
 
     # ------------------------------------------------------- constructors
     @classmethod
-    def gaussian(cls, event_shape: ShapeLike, learnable: bool = False) -> "RadialBase":
+    def gaussian(cls, event_shape: ShapeLike, learnable: bool = False) -> RadialBase:
         """Standard normal as ``chi(d)`` norm with ``p = 2`` (exact)."""
         d = math.prod(as_shape(event_shape))
         norm = GeneralizedGamma(d, 2.0, a=d, beta=2.0, theta=math.sqrt(2.0), learn_shape=learnable, learn_scale=learnable)
         return cls(event_shape, 2.0, norm)
 
     @classmethod
-    def laplace(cls, event_shape: ShapeLike, learnable: bool = False) -> "RadialBase":
+    def laplace(cls, event_shape: ShapeLike, learnable: bool = False) -> RadialBase:
         """Product of standard Laplace distributions (``p = 1``, ``R ~ Gamma(d, 1)``)."""
         d = math.prod(as_shape(event_shape))
         norm = GeneralizedGamma(d, 1.0, a=d, beta=1.0, theta=1.0, learn_shape=learnable, learn_scale=learnable)
         return cls(event_shape, 1.0, norm)
 
     @classmethod
-    def generalized_gaussian(cls, event_shape: ShapeLike, p: float, learnable: bool = False) -> "RadialBase":
+    def generalized_gaussian(cls, event_shape: ShapeLike, p: float, learnable: bool = False) -> RadialBase:
         """Product of generalized normals ``∝ exp(-|z_i|^p / p)`` (finite ``p``)."""
         if math.isinf(p):
             raise ValueError("p = inf has no generalized normal; use RadialBase(event_shape, p=float('inf'))")

@@ -29,7 +29,14 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from cjd_flows.data._download import PathLike, download_url, resolve_root
-from cjd_flows.data.preprocess import Compose, Preprocessing, ToSymmetric, ToUnitInterval, UniformDequantize, bits_per_dim
+from cjd_flows.data.preprocess import (
+    Compose,
+    Preprocessing,
+    ToSymmetric,
+    ToUnitInterval,
+    UniformDequantize,
+    bits_per_dim,
+)
 
 IMAGE_DATASETS = ("mnist", "fashion_mnist", "cifar10")
 
@@ -202,7 +209,7 @@ class DequantizedImageDataset(Dataset):
     def __len__(self) -> int:
         return self.images.shape[0]
 
-    def to(self, device) -> "DequantizedImageDataset":
+    def to(self, device) -> DequantizedImageDataset:
         """Moves the ``uint8`` storage to ``device`` (in place); returns ``self``."""
         self.images = self.images.to(device)
         self.labels = self.labels.to(device)

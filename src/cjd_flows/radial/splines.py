@@ -13,6 +13,8 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
+from ._numerics import searchsorted_right
+
 DEFAULT_MIN_WIDTH = 1e-3
 DEFAULT_MIN_HEIGHT = 1e-3
 DEFAULT_MIN_DERIVATIVE = 1e-3
@@ -67,7 +69,7 @@ def rq_spline(
     inside = (x >= -bound) & (x <= bound)
     xi = x.clamp(-bound, bound)
     knots = ch if inverse else cw
-    idx = torch.searchsorted(knots[1:-1].contiguous(), xi.detach().reshape(-1).contiguous(), right=True)
+    idx = searchsorted_right(knots[1:-1], xi.detach().reshape(-1))
     idx = idx.reshape(x.shape)
 
     x_k, w_k = cw[idx], widths[idx]

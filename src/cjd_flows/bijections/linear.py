@@ -263,7 +263,9 @@ class LULinear(ChannelLinear):
         return self.lower.tril(-1) + eye
 
     def U(self) -> Tensor:
-        return self.upper.triu(1) + torch.diag(self.sign * self.log_diag().exp())
+        # eye * v instead of torch.diag(v): ONNX has no diag operator
+        eye = torch.eye(self.channels, device=self.upper.device, dtype=self.upper.dtype)
+        return self.upper.triu(1) + eye * (self.sign * self.log_diag().exp())
 
     def weight(self) -> Tensor:
         return (self.L() @ self.U())[self.perm]
@@ -504,10 +506,10 @@ class ActNorm(ChannelLinear):
         return (z - _channel_view(self.shift, z)) * _channel_view((-s).exp(), z)
 
     def weight(self) -> Tensor:
-        return torch.diag(self.scale_log().exp())
+        return torch.eye(self.channels, device=self.log_scale.device, dtype=self.log_scale.dtype) * self.scale_log().exp()
 
     def inverse_weight(self) -> Tensor:
-        return torch.diag((-self.scale_log()).exp())
+        return torch.eye(self.channels, device=self.log_scale.device, dtype=self.log_scale.dtype) * (-self.scale_log()).exp()
 
     def bias(self) -> Optional[Tensor]:
         return self.shift

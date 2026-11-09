@@ -6,7 +6,15 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from cjd_flows.core import Bijection, Flow, StandardNormal
-from cjd_flows.train import EMA, NoiseAugmentation, TrainResult, evaluate_nll, fit, nats_to_bits_per_dim, tweedie_denoise
+from cjd_flows.train import (
+    EMA,
+    NoiseAugmentation,
+    TrainResult,
+    evaluate_nll,
+    fit,
+    nats_to_bits_per_dim,
+    tweedie_denoise,
+)
 
 
 # ----------------------------------------------------------------- tiny flow
