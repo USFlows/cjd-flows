@@ -1,0 +1,53 @@
+name: publish
+
+# Publishes to PyPI via trusted publishing (OIDC, no API token) when a version
+# tag `v*` is pushed. One-time setup on PyPI: add a trusted publisher for
+# repository USFlows/cjd-flows, workflow `publish.yml`, environment `pypi`.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Check that the tag matches the project version
+        run: |
+          version="$(uv version --short)"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match project version ${version}" >&2
+            exit 1
+          fi
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Smoke test the wheel (core import without optional dependencies)
+        env:
+          UV_TORCH_BACKEND: cpu
+        run: |
+          uv venv /tmp/wheel-env
+          VIRTUAL_ENV=/tmp/wheel-env uv pip install dist/*.whl
+          /tmp/wheel-env/bin/python -c "import sys, cjd_flows.core; assert 'pyro' not in sys.modules"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cjd-flows
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

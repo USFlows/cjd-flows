@@ -1,6 +1,3 @@
-from time import sleep
-import torch
-
 from math import ceil
 import math
 from typing import Iterable, List, Optional, Tuple, Union
@@ -8,7 +5,6 @@ from typing import Iterable, List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from pyro.nn import DenseNN
 from torch import nn
 from typing import List, Optional, Tuple, Union
 
@@ -28,6 +24,10 @@ class AdditiveAffineNN(torch.nn.Module):
         super().__init__()
         if nonlinearity is None:
             nonlinearity = torch.nn.ReLU()
+
+        # Lazy import: pyro is an optional dependency (``cjd-flows[legacy]``)
+        # and only needed for this class.
+        from pyro.nn import DenseNN
 
         self.loc_fnc = DenseNN(
             input_dim, hidden_dims, [output_dim], nonlinearity=nonlinearity
@@ -93,13 +93,14 @@ class GatedConv(nn.Module):
             ),
             nonlinearity,
             # The kernel size below is set to 1 to reduce the number of parameters.
+            # A 1x1 convolution must not be padded (padding would enlarge the
+            # spatial dims and break the residual connection below).
             nn.Conv2d(
                 c_hidden,
                 2 * c_in,
                 kernel_size=1,
-                padding=padding,
+                padding=0,
                 stride=stride,
-                dilation=dilation,
             ),
         )
 
@@ -277,7 +278,7 @@ class ConvNet(nn.Module):
         super().__init__()
 
         if padding is None:
-            padding = kernel_size // 2
+            padding = dilation * (kernel_size // 2)  # "same" padding (odd kernels)
 
         if not isinstance(in_dims, Iterable):
             raise ValueError("in_dims must be an iterable like [C, H, W] or [C] for vector")
@@ -415,7 +416,7 @@ class ConvNet2D(nn.Module):
         kernel_size: int = 3,
         stride: int = 1,
         dilation: int = 1,
-        padding: int = 0,
+        padding: Optional[int] = None,
         normalize_layers: bool = True,
         gating: bool = True,
     ):
@@ -434,13 +435,16 @@ class ConvNet2D(nn.Module):
             nonlinearity: Nonlinearity to use within the network. ReLU
                 allows to maintain piece-wise affinity.
             kernel_size: Size of the convolutional kernel.
-            padding: Padding to apply to the convolutional layers. If None, the
-                padding is set to half the kernel size.
+            padding: Padding to apply to the convolutional layers. If None
+                (default), the padding is set to ``dilation * (kernel_size // 2)``
+                which preserves the spatial dimensions for odd kernel sizes.
+                (Before v1.0 the default was 0, which shrinks the spatial
+                dimensions and breaks coupling layers.)
         """
         super().__init__()
 
         if padding is None:
-            padding = kernel_size // 2
+            padding = dilation * (kernel_size // 2)
 
         self.nonlinearity = nonlinearity
         c_out = c_out if c_out > 0 else c_in
@@ -539,6 +543,10 @@ class CondConvNet(ConvNet):
         if not isinstance(in_dims, Iterable):
             raise ValueError("in_dims must be an iterable like [C, H, W]")
         in_dims = list(in_dims)
+        # Resolve c_out before adding the context channel; otherwise the parent
+        # would default to C + 1 output channels.
+        if c_out < 0:
+            c_out = int(in_dims[0])
         in_dims_with_ctx = [in_dims[0] + 1] + in_dims[1:]
 
         super().__init__(

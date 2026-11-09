@@ -1,6 +1,5 @@
 import math
 from abc import ABC, abstractmethod
-from time import sleep
 from typing import Any, Iterable, List, Optional, Tuple
 
 import numpy as np
@@ -10,14 +9,11 @@ from torch import nn
 from pyro import distributions as dist
 from pyro.distributions import constraints
 from pyro.distributions.transforms import Permute
-from pyro.infer import SVI
-from pyro.nn import DenseNN
 from torch import linalg as LA
 from torch.distributions.transforms import Transform
 from torch.distributions.utils import lazy_property
 from torch.functional import F
 from torch.nn import init
-from tqdm import tqdm
 
 
 class BaseTransform(dist.TransformModule):
@@ -76,9 +72,9 @@ class BaseTransform(dist.TransformModule):
 
 
 class ScaleTransform(BaseTransform):
-    """Implementation of a bijective scale transform. Applies a transform $y = \mathrm{diag}(\mathbf{scale})x$, where scale is a learnable parameter of dimension $\mathbf{dim}$
+    """Implementation of a bijective scale transform. Applies a transform $y = \\mathrm{diag}(\\mathbf{scale})x$, where scale is a learnable parameter of dimension $\\mathbf{dim}$
 
-    *Note:* The implementation does not enforce the non-zero constraint of the diagonal elements of $\mathbf{U}$ during training.
+    *Note:* The implementation does not enforce the non-zero constraint of the diagonal elements of $\\mathbf{U}$ during training.
     See :func:`add_jitter` and :func:`is_feasible` for a way to ensure that the transformation is invertible.
     """
 
@@ -102,30 +98,34 @@ class ScaleTransform(BaseTransform):
         self.codomain = dist.constraints.real_vector
 
     def init_params(self):
-        """initialization of the parameters"""
-        dim = self.dim
-        bound = 1 / math.sqrt(dim) if dim > 0 else 0
-        init.uniform_(self.scale, -bound, bound)
+        """initialization of the parameters.
+
+        The scale is initialised to the identity (all ones). The previous
+        initialisation ``uniform(-1/sqrt(D), 1/sqrt(D))`` started with a
+        log-determinant of roughly ``D * log(1/sqrt(D))`` and could produce
+        (near-)zero scales, i.e. a (near-)singular transform.
+        """
+        init.ones_(self.scale)
 
     def forward(self, x: torch.Tensor, context = None) -> torch.Tensor:
-        """ Computes the affine transform $\mathbf{scale}x$
+        """ Computes the affine transform $\\mathbf{scale}x$
         
         Args:
             x (torch.Tensor): input tensor
         
         Returns:
-            torch.Tensor: transformed tensor $\mathbf{scale}x$
+            torch.Tensor: transformed tensor $\\mathbf{scale}x$
         """
         return x * self.scale
 
     def backward(self, x: torch.Tensor, context = None) -> torch.Tensor:
-        """ Computes the inverse transform $\mathbf{scale}^{-1}x$
+        """ Computes the inverse transform $\\mathbf{scale}^{-1}x$
         
         
         Args:
             x (torch.Tensor): input tensor
         Returns:
-            torch.Tensor: transformed tensor $\mathbf{scale}^{-1}x$
+            torch.Tensor: transformed tensor $\\mathbf{scale}^{-1}x$
         """
         return x / self.scale
 
@@ -138,28 +138,30 @@ class ScaleTransform(BaseTransform):
         return self.backward(x)
 
     def log_abs_det_jacobian(self, x: torch.Tensor, y: torch.Tensor, context = None) -> float:
-        """ Computes the log absolute determinant of the Jacobian of the transform $\mathbf{scale}x$.
+        """ Computes the log absolute determinant of the Jacobian of the transform $\\mathbf{scale}x$.
         
         Args:
             x (torch.Tensor): input tensor
             
         Returns:
-            float: log absolute determinant of the Jacobian of the transform $\mathbf{scale}x$
+            float: log absolute determinant of the Jacobian of the transform $\\mathbf{scale}x$
         """
         return self.scale.abs().log().sum()
 
     def sign(self) -> int:
-        """ Computes the sign of the determinant of the Jacobian of the transform $\mathbf{scale}x$."""
+        """ Computes the sign of the determinant of the Jacobian of the transform $\\mathbf{scale}x$."""
         return 1 if (self.scale < 0).int().sum() % 2 == 0 else -1
 
     def is_feasible(self) -> bool:
-        """Checks if the layer is feasible, i.e. if the diagonal elements of $\mathbf{U}$ are all positive"""
+        """Checks if the layer is feasible, i.e. if the diagonal elements of $\\mathbf{U}$ are all positive"""
         return (self.scale != 0).all()
 
     def add_jitter(self, jitter: float = 1e-6) -> None:
-        """Adds jitter to the diagonal elements of $\mathbf{U}$."""
-        perturbation = torch.randn(self.in_dims, device=self.U_raw.device) * jitter
-        self.U_raw = self.scale + perturbation
+        """Adds jitter to the diagonal elements of $\\mathbf{U}$."""
+        # NOTE: previously referenced the non-existent attribute ``U_raw``.
+        perturbation = torch.randn_like(self.scale) * jitter
+        with torch.no_grad():
+            self.scale.add_(perturbation)
         
     def log_prior(self) -> torch.Tensor:
         """Defines a log-normal prior on the diagonal elements of U Matrix,
@@ -258,8 +260,8 @@ class Permute(BaseTransform):
 
 class MaskedCoupling(BaseTransform):
     """Implementation of a masked coupling layer. The layer is defined by a mask that specifies which dimensions are passed through unchanged and which are transformed.
-    The layer is defined by a bijective function $y = \mathrm{mask} \odot x + (1 - \mathrm{mask}) \odot (x + \mathrm{transform}(x))$, where $\mathrm{mask}$ is a binary mask,
-    $\mathrm{transform}$ is a bijective function, and $\odot$ denotes element-wise multiplication.
+    The layer is defined by a bijective function $y = \\mathrm{mask} \\odot x + (1 - \\mathrm{mask}) \\odot (x + \\mathrm{transform}(x))$, where $\\mathrm{mask}$ is a binary mask,
+    $\\mathrm{transform}$ is a bijective function, and $\\odot$ denotes element-wise multiplication.
     """
 
     def __init__(
@@ -272,7 +274,10 @@ class MaskedCoupling(BaseTransform):
             conditioner (torch.nn.Module): NN with same (input/output) shape as mask$
         """
         super().__init__(*args, **kwargs)
-        self.mask = mask
+        # Register the mask as a buffer so that ``.to()``/``.cuda()`` (also when
+        # called on a parent module) move it along with the parameters.
+        # ``persistent=False`` keeps state dicts compatible with old checkpoints.
+        self.register_buffer("mask", mask, persistent=False)
         self.conditioner = conditioner
         self.input_shape = mask.shape
         self.bijective = True
@@ -281,7 +286,7 @@ class MaskedCoupling(BaseTransform):
 
     def forward(self, x: torch.Tensor, context: Optional[torch.Tensor] = None) -> torch.Tensor:
         """ Computes the affine transform 
-        $\mathrm{mask} \odot x + (1 - \mathrm{mask}) \odot (x + \mathrm{transform}(x))$
+        $\\mathrm{mask} \\odot x + (1 - \\mathrm{mask}) \\odot (x + \\mathrm{transform}(x))$
         
         Args:
             x (torch.Tensor): input tensor
@@ -436,7 +441,7 @@ class LeakyReLUTransform(BaseTransform):
         super().__init__(*args, **kwargs)
         self.alpha = alpha
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, context=None) -> torch.Tensor:
         """ Computes the LeakyReLU transform
         
         Args:
@@ -447,7 +452,7 @@ class LeakyReLUTransform(BaseTransform):
         """
         return F.leaky_relu(x, negative_slope=self.alpha)
 
-    def backward(self, y: torch.Tensor) -> torch.Tensor:
+    def backward(self, y: torch.Tensor, context=None) -> torch.Tensor:
         """ Computes the inverse transform
         
         Args:
@@ -476,7 +481,17 @@ class LeakyReLUTransform(BaseTransform):
         Returns:
             float: log absolute determinant of the Jacobian of the transform
         """
-        return torch.log(y/x).sum()
+        # Elementwise log-derivative is 0 for x >= 0 and log|alpha| otherwise.
+        # For batched input (dim >= 2) the sum runs over the event dimensions
+        # only (all but the leading batch dimension); a 1-D input is treated as
+        # a single event. Previously the sum also ran over the batch dimension
+        # and y/x was undefined at x == 0.
+        ladj = torch.where(
+            x >= 0, torch.zeros_like(x), torch.full_like(x, math.log(abs(self.alpha)))
+        )
+        if ladj.dim() > 1:
+            return ladj.sum(dim=tuple(range(1, ladj.dim())))
+        return ladj.sum()
 
 class Rotation(BaseTransform):
     """Implements a rotation transform. The transform is defined by two 
@@ -501,7 +516,7 @@ class Rotation(BaseTransform):
         self.plane = plane
         self.angle = angle
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, context=None) -> torch.Tensor:
         """ Computes the rotation transform
         
         Args:
@@ -515,7 +530,7 @@ class Rotation(BaseTransform):
         y[..., self.plane[1]] = x[..., self.plane[0]] * math.sin(self.angle) + x[..., self.plane[1]] * math.cos(self.angle)
         return y
 
-    def backward(self, y: torch.Tensor) -> torch.Tensor:
+    def backward(self, y: torch.Tensor, context=None) -> torch.Tensor:
         """ Computes the inverse transform
         
         Args:
@@ -524,10 +539,12 @@ class Rotation(BaseTransform):
         Returns:
             torch.Tensor: transformed tensor
         """
-        y = y.clone()
-        y[..., self.plane[0]] = y[..., self.plane[0]] * math.cos(self.angle) + y[..., self.plane[1]] * math.sin(self.angle)
-        y[..., self.plane[1]] = -y[..., self.plane[0]] * math.sin(self.angle) + y[..., self.plane[1]] * math.cos(self.angle)
-        return y
+        # Read from the unmodified input; previously the first coordinate was
+        # overwritten before being used to compute the second one.
+        x = y.clone()
+        x[..., self.plane[0]] = y[..., self.plane[0]] * math.cos(self.angle) + y[..., self.plane[1]] * math.sin(self.angle)
+        x[..., self.plane[1]] = -y[..., self.plane[0]] * math.sin(self.angle) + y[..., self.plane[1]] * math.cos(self.angle)
+        return x
     
     def as_matrix(self) -> torch.Tensor:
         """ Returns the rotation matrix"""
@@ -562,7 +579,7 @@ class Rotation(BaseTransform):
 
 class CompositeRotation(BaseTransform):
     """Implements a composite rotation transform. The transform is defined by a 
-    sequence of rotations  $R_1, \ldots, R_n$."""
+    sequence of rotations  $R_1, \\ldots, R_n$."""
     bijective = True
     domain = dist.constraints.real
     codomain = dist.constraints.real
@@ -586,10 +603,10 @@ class CompositeRotation(BaseTransform):
             R = torch.matmul(R, rot.as_matrix())
         return R
      
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, context=None) -> torch.Tensor:
         """Computes the composite rotation transform by applying the rotations in sequence"""
         for rot in self.rotations:
-            x = rot(x)
+            x = rot.forward(x)
             
         return x
     
@@ -621,8 +638,8 @@ class CompositeRotation(BaseTransform):
 
 
 class PlaneBijectiveLinearTransform(BaseTransform):
-    """Simple implementation of a bijective linear transform. Applies a transform $y = \mathbf{W}x + \mathbf{b}$, where $\mathbf{W}$ is a
-    learnable parameter matrix and $\mathbf{b}$ is a learnable bias vector.
+    """Simple implementation of a bijective linear transform. Applies a transform $y = \\mathbf{W}x + \\mathbf{b}$, where $\\mathbf{W}$ is a
+    learnable parameter matrix and $\\mathbf{b}$ is a learnable bias vector.
     Note: This is a dummy implementation that does not enforce bijectivity nor is it intended to be trained.
     It acts as a simplification of the LU transform for verification purposes.
     """
@@ -669,7 +686,7 @@ class PlaneBijectiveLinearTransform(BaseTransform):
         return self.ladj
     
     def forward(self, x: torch.Tensor, context = None) -> torch.Tensor:
-        """ Computes the affine transform $y = \mathbf{W}x + \mathbf{b}$.
+        """ Computes the affine transform $y = \\mathbf{W}x + \\mathbf{b}$.
         
         Args:
             x (torch.Tensor): input tensor
@@ -679,7 +696,7 @@ class PlaneBijectiveLinearTransform(BaseTransform):
         return self.forth(x)
     
     def backward(self, y: torch.Tensor, context = None) -> torch.Tensor:
-        """ Computes the inverse transform $y = \mathbf{W}^{-1}x + \mathbf{b}$.
+        """ Computes the inverse transform $y = \\mathbf{W}^{-1}x + \\mathbf{b}$.
         
         Args:
             y (torch.Tensor): input tensor
@@ -807,13 +824,13 @@ class HouseholderTransform(AffineTransform):
         for vk in self.vk_householder:
             w = torch.mm(
                 w,
-                torch.eye(self.dim).to(w.device) \
+                torch.eye(self.dim, device=w.device, dtype=w.dtype)
                     - 2 * torch.ger(vk, vk) / torch.dot(vk, vk)
             )
 
         return w
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, context=None) -> torch.Tensor:
         """Computes the Householder transform.
         
         Args:
@@ -839,8 +856,11 @@ class HouseholderTransform(AffineTransform):
         Returns:
             torch.Tensor: transformed tensor
         """
+        # forward computes y = x @ W^T (i.e. y = W x for column vectors) with
+        # orthogonal W, hence x = W^T y, i.e. x = y @ W for row vectors.
+        # (Previously ``y @ W^T`` was used, which is not the inverse.)
         w = self._construct_householder_permutation()
-        return torch.matmul(y, w.T)
+        return torch.matmul(y, w)
     
     def _call(self, x: torch.Tensor) -> torch.Tensor:
         """ Alias for :func:`forward`"""
@@ -874,7 +894,9 @@ class HouseholderTransform(AffineTransform):
     
     def bias(self) -> torch.Tensor:
         """ Returns the bias vector"""
-        return torch.zeros(self.dim).to(self.vk_householder.device)
+        return torch.zeros(
+            self.dim, device=self.vk_householder.device, dtype=self.vk_householder.dtype
+        )
 
 class BlockAffineTransform(BaseTransform):
     """Implements a block affine transform. The transform is defined by a 
@@ -1186,11 +1208,11 @@ class Bijective1x1Conv2d(BaseTransform):
         return self        
     
 class LUTransform(AffineTransform):
-    """Implementation of a linear bijection transform. Applies a transform $y = (\mathbf{L}\mathbf{U})^{-1}x$, where $\mathbf{L}$ is a
-    lower triangular matrix with unit diagonal and $\mathbf{U}$ is an upper triangular matrix. Bijectivity is guaranteed by
-    requiring that the diagonal elements of $\mathbf{U}$ are positive and the diagonal elements of  $\mathbf{L}$ are all $1$.
+    """Implementation of a linear bijection transform. Applies a transform $y = (\\mathbf{L}\\mathbf{U})^{-1}x$, where $\\mathbf{L}$ is a
+    lower triangular matrix with unit diagonal and $\\mathbf{U}$ is an upper triangular matrix. Bijectivity is guaranteed by
+    requiring that the diagonal elements of $\\mathbf{U}$ are positive and the diagonal elements of  $\\mathbf{L}$ are all $1$.
 
-    *Note:* The implementation does not enforce the non-zero constraint of the diagonal elements of $\mathbf{U}$ during training.
+    *Note:* The implementation does not enforce the non-zero constraint of the diagonal elements of $\\mathbf{U}$ during training.
     See :func:`add_jitter` and :func:`is_feasible` for a way to ensure that the transformation is invertible.
     """
 
@@ -1216,8 +1238,14 @@ class LUTransform(AffineTransform):
 
         self.input_shape = dim
 
-        self.L_mask = torch.tril(torch.ones(dim, dim), diagonal=-1)
-        self.U_mask = torch.triu(torch.ones(dim, dim), diagonal=0)
+        # Buffers (non-persistent for checkpoint compatibility) so that they
+        # follow the module across devices.
+        self.register_buffer(
+            "L_mask", torch.tril(torch.ones(dim, dim), diagonal=-1), persistent=False
+        )
+        self.register_buffer(
+            "U_mask", torch.triu(torch.ones(dim, dim), diagonal=0), persistent=False
+        )
 
         self.L_raw.register_hook(lambda grad: grad * self.L_mask)
         self.U_raw.register_hook(lambda grad: grad * self.U_mask)
@@ -1250,27 +1278,27 @@ class LUTransform(AffineTransform):
             init.uniform_(self.bias_vector, -bound, bound)
 
     def forward(self, x: torch.Tensor, context = None) -> torch.Tensor:
-        """Computes the affine transform $y = (LU)^{-1}x + \mathrm{bias}$.
+        """Computes the affine transform $y = (LU)^{-1}x + \\mathrm{bias}$.
         The value $y$ is computed by solving the linear equation system
         \begin{align*}
             Ly_0 &= x + LU\textrm{bias} \\
             Uy &= y_0  
-        \end{align*}
+        \\end{align*}
 
         :param x: input tensor
         :type x: torch.Tensor
-        :return: transformed tensor $(LU)x + \mathrm{bias}$
+        :return: transformed tensor $(LU)x + \\mathrm{bias}$
         """
 
         y = torch.functional.F.linear(x, self.matrix(), self.bias())
         return y
 
     def backward(self, y: torch.Tensor, context = None) -> torch.Tensor:
-        """Computes the inverse transform $(LU)(y - \mathrm{bias})$
+        """Computes the inverse transform $(LU)(y - \\mathrm{bias})$
 
         :param y: input tensor
         :type y: torch.Tensor
-        :return: transformed tensor $(LU)^{-1}(y - \mathrm{bias})$"""
+        :return: transformed tensor $(LU)^{-1}(y - \\mathrm{bias})$"""
         L_inv = torch.inverse(self.L)
         U_inv = torch.inverse(self.U)
         x = y - self.bias_vector
@@ -1280,12 +1308,14 @@ class LUTransform(AffineTransform):
 
     @property
     def L(self) -> torch.Tensor:
-        """The lower triangular matrix $\mathbf{L}$ of the layers LU decomposition"""
-        return self.L_raw.tril(-1)  + torch.eye(self.dim).to(self.L_raw.device)
+        """The lower triangular matrix $\\mathbf{L}$ of the layers LU decomposition"""
+        return self.L_raw.tril(-1) + torch.eye(
+            self.dim, device=self.L_raw.device, dtype=self.L_raw.dtype
+        )
 
     @property
     def U(self) -> torch.Tensor:
-        """The upper triangular matrix $\mathbf{U}$ of the layers LU decomposition"""
+        """The upper triangular matrix $\\mathbf{U}$ of the layers LU decomposition"""
         return self.U_raw.triu()
     
     def matrix(self) -> torch.Tensor:
@@ -1311,14 +1341,14 @@ class LUTransform(AffineTransform):
         return self.backward(y)
 
     def log_abs_det_jacobian(self, x: torch.Tensor, y: torch.Tensor, context = None) -> float:
-        """ Computes the log absolute determinant of the Jacobian of the transform $(LU)x + \mathrm{bias}$.
+        """ Computes the log absolute determinant of the Jacobian of the transform $(LU)x + \\mathrm{bias}$.
         
         Args:
             x (torch.Tensor): input tensor
             y (torch.Tensor): transformed tensor
             
         Returns:
-            float: log absolute determinant of the Jacobian of the transform $(LU)x + \mathrm{bias}$
+            float: log absolute determinant of the Jacobian of the transform $(LU)x + \\mathrm{bias}$
         """
         # log |Det(LU)| =  sum(log(|diag(U)|)) 
         # (as L is lower triangular with all 1s on the diag, i.e. log|Det(L)| = 0, and U is upper triangular)
@@ -1326,17 +1356,19 @@ class LUTransform(AffineTransform):
         # a reformulation. Note dU keeps the quadratic structure but replace all values  
         # outside the diagonal with 1. Then sum(log(|diag(U)|)) = sum(log(|dU|))
         U = self.U
-        dU = U - U.triu(1) + (torch.ones_like(U) - torch.eye(self.dim).to(U.device))
+        dU = U - U.triu(1) + (
+            torch.ones_like(U) - torch.eye(self.dim, device=U.device, dtype=U.dtype)
+        )
         return dU.abs().log().sum()
 
     def sign(self) -> int:
-        """ Computes the sign of the determinant of the Jacobian of the transform $(LU)x + \mathrm{bias}$.
+        """ Computes the sign of the determinant of the Jacobian of the transform $(LU)x + \\mathrm{bias}$.
         
         Args:
             x (torch.Tensor): input tensor
             
         Returns:
-            float: sign of the determinant of the Jacobian of the transform $(LU)x + \mathrm{bias}$
+            float: sign of the determinant of the Jacobian of the transform $(LU)x + \\mathrm{bias}$
         """
         return self.L.diag().prod().sign() *  self.U.diag().prod().sign()
 
@@ -1355,11 +1387,11 @@ class LUTransform(AffineTransform):
         return super().to(device)
 
     def is_feasible(self) -> bool:
-        """Checks if the layer is feasible, i.e. if the diagonal elements of $\mathbf{U}$ are all positive"""
+        """Checks if the layer is feasible, i.e. if the diagonal elements of $\\mathbf{U}$ are all positive"""
         return (self.U_raw.diag() != 0).all()
 
     def add_jitter(self, jitter: float = 1e-6) -> None:
-        """Adds jitter to the diagonal elements of $\mathbf{U}$. This is useful to ensure that the transformation 
+        """Adds jitter to the diagonal elements of $\\mathbf{U}$. This is useful to ensure that the transformation 
         is invertible.
         
         Args:
@@ -1395,7 +1427,13 @@ class LUTransform(AffineTransform):
         return log_prior
     
 class SequentialAffineTransform(AffineTransform):
-    """Implements a sequential affine transform. The transform is defined by a sequence of affine transforms $y = A_1 A_2 \ldots A_n x + b$.
+    """Implements a sequential affine transform. The transform is defined by a sequence of affine transforms $y = A_1 A_2 \\ldots A_n x + b$.
+
+    *Note:* :meth:`forward`/:meth:`backward` are defined through
+    :meth:`matrix`, :meth:`inverse_matrix` and :meth:`bias` (the representation
+    used by :class:`BlockAffineTransform` and hence by trained ``USFlow``
+    checkpoints). Previously ``forward`` applied the child transforms one after
+    another, which computes a *different* affine map than ``matrix()``/``bias()``.
     """
     bijective = True
     domain = dist.constraints.real_vector
@@ -1424,9 +1462,7 @@ class SequentialAffineTransform(AffineTransform):
         Returns:
             torch.Tensor: transformed tensor
         """
-        for transform in self.transforms:
-            x = transform(x, context)
-        return x
+        return F.linear(x, self.matrix(), self.bias())
     
     def backward(self, y: torch.Tensor, context = None) -> torch.Tensor:
         """ Computes the inverse transform
@@ -1438,9 +1474,7 @@ class SequentialAffineTransform(AffineTransform):
         Returns:
             torch.Tensor: transformed tensor
         """
-        for transform in self.transforms[::-1]:
-            y = transform.backward(y, context)
-        return y
+        return F.linear(y - self.bias(), self.inverse_matrix())
     
     def log_abs_det_jacobian(
         self, 
@@ -1479,23 +1513,32 @@ class SequentialAffineTransform(AffineTransform):
             ]
         )
     
+    def _eye(self) -> torch.Tensor:
+        """Identity matrix on the device/dtype of the child parameters."""
+        ref = next(self.parameters(), None)
+        if ref is None:
+            ref = next(self.buffers(), None)
+        if ref is None:
+            return torch.eye(self.dim)
+        return torch.eye(self.dim, device=ref.device, dtype=ref.dtype)
+
     def matrix(self) -> torch.Tensor:
-        """ Returns the transformation matrix"""
-        M = torch.eye(self.dim).to(self.device)
+        """ Returns the transformation matrix A_1 A_2 ... A_n"""
+        M = self._eye()
         for transform in self.transforms:
             M = torch.matmul(M, transform.matrix())
         return M
-    
+
     def inverse_matrix(self) -> torch.Tensor:
-        """ Returns the inverse transformation matrix"""
-        M = torch.eye(self.dim).to(self.device)
+        """ Returns the inverse transformation matrix A_n^{-1} ... A_1^{-1}"""
+        M = self._eye()
         for transform in self.transforms[::-1]:
             M = torch.matmul(M, transform.inverse_matrix())
         return M
-    
+
     def bias(self) -> torch.Tensor:
         """ Returns the bias vector"""
-        b = torch.zeros(self.dim).to(self.device)
+        b = torch.zeros_like(self._eye()[0])
         for transform in self.transforms:
             b = torch.matmul(b, transform.matrix()) + transform.bias()
         return b
@@ -1509,11 +1552,12 @@ class SequentialAffineTransform(AffineTransform):
         for transform in self.transforms:
             transform.to(device)
         self.device = device
+        return super().to(device)
     
 class BlockLUTransform(LUTransform):
-    """Implementation of a tiled LU transform. The transform is defined by a block-diagonal matrix $\mathbf{L}\mathbf{U}$, where $\mathbf{L}$ is a
-    lower triangular matrix with unit diagonal and $\mathbf{U}$ is an upper triangular matrix. The blocks are of size $b \times b$.
-    Bijectivity is guaranteed by requiring that the diagonal elements of $\mathbf{U}$ are non-zero and the diagonal elements of  $\mathbf{L}$ are all $1$.
+    """Implementation of a tiled LU transform. The transform is defined by a block-diagonal matrix $\\mathbf{L}\\mathbf{U}$, where $\\mathbf{L}$ is a
+    lower triangular matrix with unit diagonal and $\\mathbf{U}$ is an upper triangular matrix. The blocks are of size $b \times b$.
+    Bijectivity is guaranteed by requiring that the diagonal elements of $\\mathbf{U}$ are non-zero and the diagonal elements of  $\\mathbf{L}$ are all $1$.
     """
     bijective = True
     volume_preserving = False
@@ -1541,16 +1585,16 @@ class BlockLUTransform(LUTransform):
         super().__init__(self.block_size, prior_scale, *args, **kwargs)
     
     def forward(self, x: torch.Tensor, context = None) -> torch.Tensor:
-        """Computes the blockwise affine transform $y = (LU)^{-1}x + \mathrm{bias}$.
+        """Computes the blockwise affine transform $y = (LU)^{-1}x + \\mathrm{bias}$.
         The value $y$ is computed by solving the linear equation system
         \begin{align*}
             Ly_0 &= x + LU\textrm{bias} \\
             Uy &= y_0  
-        \end{align*}
+        \\end{align*}
 
         :param x: input tensor
         :type x: torch.Tensor
-        :return: transformed tensor $(LU)x + \mathrm{bias}$
+        :return: transformed tensor $(LU)x + \\mathrm{bias}$
         """
         
         w = LA.matmul(self.L, self.U).view(
@@ -1562,11 +1606,11 @@ class BlockLUTransform(LUTransform):
         return self.global_transform(x, w, b)
     
     def backward(self, y: torch.Tensor, context = None) -> torch.Tensor:
-        """Computes the inverse transform $(LU)(y - \mathrm{bias})$
+        """Computes the inverse transform $(LU)(y - \\mathrm{bias})$
 
         :param y: input tensor
         :type y: torch.Tensor
-        :return: transformed tensor $(LU)^{-1}(y - \mathrm{bias})$"""
+        :return: transformed tensor $(LU)^{-1}(y - \\mathrm{bias})$"""
         
         L_inv = torch.inverse(self.L)
         U_inv = torch.inverse(self.U)
@@ -1636,7 +1680,7 @@ class BlockLUTransform(LUTransform):
     
     def log_abs_det_jacobian(self, x: torch.Tensor, y: torch.Tensor, context = None) -> float:
         """ Computes the log absolute determinant of the Jacobian of the 
-        blockwise transform $(LU)x + \mathrm{bias}$. Since the Jacobian is block-diagonal,
+        blockwise transform $(LU)x + \\mathrm{bias}$. Since the Jacobian is block-diagonal,
         the determinant is the product of the determinants of the blocks.
         The log absolute determinant is the sum of the log absolute determinants of the blocks.
         Since all blocks use the same LU transform, we can use the log absolute determinant of 
@@ -1647,18 +1691,19 @@ class BlockLUTransform(LUTransform):
             y (torch.Tensor): transformed tensor
             
         Returns:
-            float: log absolute determinant of the Jacobian of the transform $(LU)x + \mathrm{bias}$
+            float: log absolute determinant of the Jacobian of the transform $(LU)x + \\mathrm{bias}$
         """
         return super().log_abs_det_jacobian(x, y, context) * self.n_blocks
     
     def sign(self) -> int:
-        """ Computes the sign of the determinant of the Jacobian of the blockwise transform $(LU)x + \mathrm{bias}$.
+        """ Computes the sign of the determinant of the Jacobian of the blockwise transform $(LU)x + \\mathrm{bias}$.
         
         Args:
             x (torch.Tensor): input tensor
             
         Returns:
-            float: sign of the determinant of the Jacobian of the blockwise transform $(LU)x + \mathrm{bias}$
+            float: sign of the determinant of the Jacobian of the blockwise transform $(LU)x + \\mathrm{bias}$
         """
-        return self.block_transform.sign() ** self.n_blocks
+        # NOTE: previously referenced the non-existent ``self.block_transform``.
+        return super().sign() ** self.n_blocks
      

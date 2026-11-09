@@ -27,6 +27,12 @@ from cjd_flows.transforms import ScaleTransform
 
 
 
+def _detect_anomaly_requested() -> bool:
+    """Whether autograd anomaly detection was requested via the environment
+    variable ``CJD_FLOWS_DETECT_ANOMALY`` (``1``/``true``/``yes``)."""
+    return os.environ.get("CJD_FLOWS_DETECT_ANOMALY", "").strip().lower() in {"1", "true", "yes"}
+
+
 class HyperoptExperiment(Experiment):
     """Hyperparameter optimization experiment."""
 
@@ -81,7 +87,9 @@ class HyperoptExperiment(Experiment):
         config = create_objects_from_classes(config)
         writer = SummaryWriter()
         # warnings.simplefilter("error")
-        torch.autograd.set_detect_anomaly(True)
+        # Anomaly detection slows training down considerably; opt-in only.
+        if _detect_anomaly_requested():
+            torch.autograd.set_detect_anomaly(True)
         if device is None:
             if config["device"] is not None:
                 device = config["device"]
@@ -102,13 +110,19 @@ class HyperoptExperiment(Experiment):
         flow = config["model_cfg"]["type"](**model_hparams)
         flow.to(device)
         
+        # Create the optimizer once so that its state (moments, Hessian
+        # estimates, ...) is kept across epochs. Previously ``fit`` re-created
+        # the optimizer in every epoch.
+        optimizer = config["optim_cfg"]["optimizer"](
+            flow.parameters(), **(config["optim_cfg"]["params"] or {})
+        )
+
         best_loss = float("inf")
         strikes = 0
         for epoch in range(config["epochs"]):
             train_loss = flow.fit(
                 data_train,
-                config["optim_cfg"]["optimizer"],
-                config["optim_cfg"]["params"],
+                optimizer,
                 batch_size=config["batch_size"],
                 device=device,
             )[-1]
