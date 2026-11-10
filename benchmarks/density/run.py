@@ -161,6 +161,10 @@ def main():
     ap.add_argument("--seeds", type=int, nargs="+", default=[0])
     ap.add_argument("--out", default="benchmarks/runs/density")
     ap.add_argument("--filter", default=None, help="substring filter on dataset name")
+    ap.add_argument("--bases", nargs="+", default=None, help="restrict base distributions")
+    ap.add_argument("--couplings", nargs="+", default=None, help="restrict coupling types")
+    ap.add_argument("--steps-scale", type=float, default=1.0, help="multiply the step budget")
+    ap.add_argument("--threads", type=int, default=None, help="torch threads per worker")
     args = ap.parse_args()
 
     if args.suite == "toy":
@@ -172,6 +176,15 @@ def main():
                  for b in ("gaussian", "ggmix") for c in ("additive", "gin")]
     if args.filter:
         specs = [s for s in specs if args.filter in s["dataset"]]
+    if args.bases:
+        specs = [s for s in specs if s["base"] in args.bases]
+    if args.couplings:
+        specs = [s for s in specs if s["coupling"] in args.couplings]
+    for s in specs:
+        if args.steps_scale != 1.0:
+            s["steps"] = int(s["steps"] * args.steps_scale)
+        if args.threads:
+            s["threads"] = args.threads
     out = Path(args.out) / args.suite
     out.mkdir(parents=True, exist_ok=True)
     done = set()
