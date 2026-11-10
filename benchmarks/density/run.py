@@ -148,7 +148,7 @@ def tabular_grid(seeds):
     }
     specs = []
     for (ds, c), base, coup, seed in itertools.product(
-        cfg.items(), ["gaussian", "ggmix", "spline", "radial-mixture"], ["additive", "autoregressive"], seeds
+        cfg.items(), ["gaussian", "ggmix", "ggmix-monotone", "spline", "radial-mixture"], ["additive", "autoregressive"], seeds
     ):
         specs.append(dict(dataset=ds, base=base, coupling=coup, seed=seed, threads=4, **c))
     return specs
