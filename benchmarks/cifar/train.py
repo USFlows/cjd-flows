@@ -160,6 +160,13 @@ def main():
 
     device = "cuda"
     amp_dtype = torch.bfloat16 if args.amp == "bf16" else None
+    # Optional per-run overrides (lets a running job queue be re-planned):
+    # <out>/OVERRIDES.json maps a default run name to a dict of argument overrides.
+    ov_file = Path(args.out) / "OVERRIDES.json"
+    default_name = f"{args.size}-{args.variant}" + (f"-noise{args.noise}" if args.noise else "") + f"-s{args.seed}"
+    if ov_file.exists():
+        for k, v in json.loads(ov_file.read_text()).get(default_name, {}).items():
+            setattr(args, k.replace("-", "_"), v)
     name = args.name or f"{args.size}-{args.variant}" + (f"-noise{args.noise}" if args.noise else "") + f"-s{args.seed}"
     out = Path(args.out) / name
     skip_file = Path(args.out) / "SKIP"

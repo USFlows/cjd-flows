@@ -33,6 +33,7 @@ SIZES = {
     "small": (256, 2, 8),
     "medium": (384, 3, 12),
     "large": (512, 4, 16),
+    "deep": (256, 1, 24),
 }
 
 SPATIAL = ("checkerboard", "spatial-row", "spatial-col")
