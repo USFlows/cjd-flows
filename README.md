@@ -154,7 +154,9 @@ non-US flow, high-density regions are skewed against the latent geometry.
   the constant determinant; logit preprocessing does not.
 * **Anomaly / OOD detection**: `cjd_flows.scores.anomaly_scores` returns NLL,
   latent norm, typicality `−log p_R(‖z‖)` and the HDR p-value, together with
-  AUROC, AUPR and FPR@95 metrics.
+  AUROC, AUPR and FPR@95 metrics. Uniformly scaling flows for one-class
+  classification are studied in Abu Zaid et al. (2025),
+  [arXiv:2510.09452](https://arxiv.org/abs/2510.09452).
 * **Neural network verification** (VeriFlow): train a piecewise-affine US flow
   as a proxy density, take a latent upper density level set, which is a norm
   ball, and verify properties over its image. `cjd_flows.export.to_onnx`
@@ -185,6 +187,11 @@ If you use this library, please cite the VeriFlow paper:
 
 > Zaid, F. A., Neider, D., and Yalciner, M. (2026). VeriFlow: Modeling Distributions for Neural Network Verification. *Proceedings of the AAAI Conference on Artificial Intelligence*, 40(33), 28050-28058. https://doi.org/10.1609/aaai.v40i33.40030
 
+For uniformly scaling flows in anomaly detection and one-class classification,
+please also cite:
+
+> Abu Zaid, F., Katzke, T., Müller, E., and Neider, D. (2025). On Uniformly Scaling Flows: A Density-Aligned Approach to Deep One-Class Classification. arXiv:2510.09452. https://arxiv.org/abs/2510.09452
+
 GitHub citation support and downloadable formats:
 
 - [`CITATION.cff`](https://github.com/USFlows/cjd-flows/blob/main/CITATION.cff) (for GitHub's "Cite this repository" widget)
@@ -206,6 +213,15 @@ GitHub citation support and downloadable formats:
   doi     = {10.1609/aaai.v40i33.40030},
   url     = {https://ojs.aaai.org/index.php/AAAI/article/view/40030}
 }
+
+@misc{AbuZaid_Katzke_Mueller_Neider_2025,
+  title         = {On Uniformly Scaling Flows: A Density-Aligned Approach to Deep One-Class Classification},
+  author        = {Abu Zaid, Faried and Katzke, Tim and M{\"u}ller, Emmanuel and Neider, Daniel},
+  year          = {2025},
+  eprint        = {2510.09452},
+  archivePrefix = {arXiv},
+  url           = {https://arxiv.org/abs/2510.09452}
+}
 ```
 
 </details>
@@ -214,6 +230,7 @@ GitHub citation support and downloadable formats:
 
 * Abu Zaid, Diekmann, Neider (2023). *Distribution-aware neuro-symbolic verification.* AISoLA 2023, LNCS, pp. 445–447.
 * Abu Zaid, Neider, Yalciner (2026). *VeriFlow: Modeling Distributions for Neural Network Verification.* AAAI.
+* Abu Zaid, Katzke, Müller, Neider (2025). *On Uniformly Scaling Flows: A Density-Aligned Approach to Deep One-Class Classification.* [arXiv:2510.09452](https://arxiv.org/abs/2510.09452).
 * Draxler, Wahl, Schnörr, Köthe (2024). *On the Universality of Volume-Preserving and Coupling-Based Normalizing Flows.* ICML.
 * Dinh, Krueger, Bengio (2015). *NICE: Non-linear Independent Components Estimation.*
 * Sorrenson, Rother, Köthe (2020). *Disentanglement by Nonlinear ICA with General Incompressible-flow Networks (GIN).* ICLR.

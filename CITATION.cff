@@ -31,3 +31,20 @@ preferred-citation:
       given-names: "Daniel"
     - family-names: "Yalciner"
       given-names: "Mustafa"
+references:
+  - type: article
+    title: "On Uniformly Scaling Flows: A Density-Aligned Approach to Deep One-Class Classification"
+    year: 2025
+    url: "https://arxiv.org/abs/2510.09452"
+    identifiers:
+      - type: other
+        value: "arXiv:2510.09452"
+    authors:
+      - family-names: "Abu Zaid"
+        given-names: "Faried"
+      - family-names: "Katzke"
+        given-names: "Tim"
+      - family-names: "Müller"
+        given-names: "Emmanuel"
+      - family-names: "Neider"
+        given-names: "Daniel"
