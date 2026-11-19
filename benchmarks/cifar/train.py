@@ -130,10 +130,19 @@ def to_img(x):
     return ((x.clamp(-1, 1) + 1) / 2).cpu()
 
 
-def save_grid(x, path, nrow=8):
-    import torchvision
+def save_grid(x, path, nrow=8, pad=2):
+    """Saves a ``(B, 3, H, W)`` batch as an image grid (same layout as torchvision's ``save_image``)."""
+    from PIL import Image
 
-    torchvision.utils.save_image(to_img(x), path, nrow=nrow)
+    imgs = (to_img(x).float() * 255).round().to(torch.uint8).permute(0, 2, 3, 1).numpy()
+    B, H, W, _ = imgs.shape
+    ncol = min(nrow, B)
+    nrows = math.ceil(B / ncol)
+    grid = np.zeros((pad + nrows * (H + pad), pad + ncol * (W + pad), 3), dtype=np.uint8)
+    for k, im in enumerate(imgs):
+        r, c = divmod(k, ncol)
+        grid[pad + r * (H + pad): pad + r * (H + pad) + H, pad + c * (W + pad): pad + c * (W + pad) + W] = im
+    Image.fromarray(grid).save(path)
 
 
 def main():
