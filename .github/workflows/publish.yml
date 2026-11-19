@@ -1,12 +1,20 @@
 name: publish
 
-# Publishes to PyPI via trusted publishing (OIDC, no API token) when a version
-# tag `v*` is pushed. One-time setup on PyPI: add a trusted publisher for
-# repository USFlows/cjd-flows, workflow `publish.yml`, environment `pypi`.
+# Publishes via trusted publishing (OIDC, no API token).
+#
+# * Pushing a version tag `v*` publishes to PyPI (environment `pypi`).
+# * Running the workflow manually (Actions -> publish -> Run workflow) publishes
+#   the current version to TestPyPI (environment `testpypi`) as a dry run.
+#
+# One-time setup: on pypi.org and test.pypi.org add a (pending) trusted publisher
+# for project `cjd-flows`, repository USFlows/cjd-flows, workflow `publish.yml`,
+# environment `pypi` and `testpypi` respectively; create both environments in
+# the GitHub repository settings.
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -17,6 +25,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Check that the tag matches the project version
+        if: github.event_name == 'push'
         run: |
           version="$(uv version --short)"
           if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
@@ -37,7 +46,26 @@ jobs:
           name: dist
           path: dist/
 
+  publish-testpypi:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/cjd-flows
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
   publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
     environment:
