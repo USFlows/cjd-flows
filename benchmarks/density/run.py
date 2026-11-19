@@ -25,7 +25,6 @@ os.environ.setdefault("HIP_VISIBLE_DEVICES", "")
 
 
 def spearman(a, b) -> float:
-    import torch
 
     ra = a.argsort().argsort().double()
     rb = b.argsort().argsort().double()

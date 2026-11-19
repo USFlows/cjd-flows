@@ -154,6 +154,7 @@ def main():
     ap.add_argument("--eval-every", type=float, default=2.0, help="epochs")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--conditioner", default="jet", choices=["jet", "conv"])
+    ap.add_argument("--no-shift", action="store_true", help="omit the data-initialized latent Shift (pre-v1 study architecture)")
     ap.add_argument("--name", default=None)
     ap.add_argument("--out", default="benchmarks/runs/cifar")
     args = ap.parse_args()
@@ -198,7 +199,8 @@ def main():
     latent_shape = tmp.latent_shape
     del tmp
     base = make_base(args.variant, latent_shape)
-    flow = build_flow(args.variant, args.size, base=base, seed=args.seed, conditioner=args.conditioner).to(device)
+    flow = build_flow(args.variant, args.size, base=base, seed=args.seed, conditioner=args.conditioner,
+                      shift=not args.no_shift).to(device)
     # Data-dependent init of the global scale (MLE for fixed preceding layers;
     # at init all couplings are the identity).
     with torch.no_grad():
@@ -275,9 +277,9 @@ def main():
             run_loss.append(loss.detach())
             step += 1
             if step % 100 == 0:
-                l = torch.stack(run_loss).mean().item() * D
+                nll = torch.stack(run_loss).mean().item() * D
                 run_loss = []
-                bpd = l / (D * math.log(2)) + LOG2_128
+                bpd = nll / (D * math.log(2)) + LOG2_128
                 scale = None
                 for m in flow.modules():
                     if m.__class__.__name__ == "GlobalScale":

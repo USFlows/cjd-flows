@@ -15,6 +15,7 @@ from cjd_flows.bijections.linear import (
     OrthogonalLinear,
     Permutation,
     Reverse,
+    Shift,
     merge_linear,
 )
 from cjd_flows.core import Chain
@@ -323,3 +324,39 @@ def test_lu_inverse_paths_agree(shape):
     for B in (1, 3, 40):  # B * n_spatial below and above C
         x = torch.randn(B, *shape, dtype=torch.float64)
         torch.testing.assert_close(layer.inverse(layer(x)), x)
+
+
+@pytest.mark.parametrize("per", ["coordinate", "channel"])
+@pytest.mark.parametrize("shape", [(6,), (3, 4, 4), (2, 2, 2, 2)], ids=str)
+def test_shift(per, shape):
+    torch.manual_seed(0)
+    x = torch.randn(64, *shape, dtype=torch.float64) + torch.randn(*shape, dtype=torch.float64) * 3
+    layer = Shift(shape, per=per).double()
+    assert not layer.initialized and layer.volume_preserving and layer.piecewise_affine
+    z = layer(x)
+    assert layer.initialized
+    dims = [0] if per == "coordinate" else [0] + list(range(2, x.dim()))
+    torch.testing.assert_close(z.mean(dims), torch.zeros_like(z.mean(dims)))
+    s = layer.shift.clone()
+    layer(x * 10)  # no re-init
+    assert torch.equal(s, layer.shift)
+    _randomize(layer)
+    check_bijection(layer, x)
+    assert layer.log_abs_det().shape == () and layer.log_abs_det().item() == 0.0
+    # eval mode and data_init=False: no init
+    ev = Shift(shape, per=per).eval()
+    ev(x.float())
+    assert not ev.initialized
+    assert Shift(shape, data_init=False).initialized
+    with pytest.raises(ValueError):
+        Shift(shape, per="bogus")
+
+
+def test_shift_state_dict_keeps_init():
+    a = Shift((3, 2, 2))
+    a(torch.randn(10, 3, 2, 2) + 5)
+    b = Shift((3, 2, 2))
+    b.load_state_dict(a.state_dict())
+    assert b.initialized
+    x = torch.randn(4, 3, 2, 2)
+    torch.testing.assert_close(a(x), b(x))

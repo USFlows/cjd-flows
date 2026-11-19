@@ -45,6 +45,7 @@ __all__ = [
     "OrthogonalLinear",
     "ActNorm",
     "GlobalScale",
+    "Shift",
     "Permutation",
     "Reverse",
     "FixedOrthogonal",
@@ -596,6 +597,61 @@ class GlobalScale(ChannelLinear):
             raise ValueError(f"unknown method {method!r}")
         self.log_scale.fill_(log_c)
         return math.exp(log_c)
+
+
+# --------------------------------------------------------------------------- shift
+class Shift(Bijection):
+    """Learnable translation ``y = x + b`` (volume preserving, ``log|det J| = 0``).
+
+    Constant-Jacobian flows built only from additive couplings have no explicit
+    bias: the couplings have to learn to centre the latents themselves, which
+    can take thousands of steps. Until then the data latents sit off the base's
+    centre, which costs likelihood and makes all samples share the colour/
+    content of the image at ``z = 0``. A ``Shift`` right before the global scale
+    removes that offset directly. With ``data_init=True`` it is set to minus the
+    mean of the first training batch (like :class:`ActNorm`; the persistent
+    buffer ``initialized`` prevents re-initialization after loading a state dict).
+
+    Args:
+        event_shape: ``(C, *spatial)`` or ``(D,)``.
+        per: ``"coordinate"`` (one offset per entry of the event, the default)
+            or ``"channel"`` (one offset per channel, shared across positions).
+        data_init: initialize from the first forward call in training mode.
+    """
+
+    piecewise_affine = True
+    volume_preserving = True
+
+    def __init__(self, event_shape: ShapeLike, per: str = "coordinate", data_init: bool = True):
+        super().__init__()
+        if per not in ("coordinate", "channel"):
+            raise ValueError("per must be 'coordinate' or 'channel'")
+        self.event_shape = as_shape(event_shape)
+        self.per = per
+        shape = self.event_shape if per == "coordinate" else (self.event_shape[0],) + (1,) * (len(self.event_shape) - 1)
+        self.shift = nn.Parameter(torch.zeros(shape))
+        self.register_buffer("initialized", torch.tensor(not data_init))
+
+    @torch.no_grad()
+    def data_init(self, x: Tensor) -> None:
+        """Sets the offset to minus the mean of ``x`` (``(B, *event_shape)``)."""
+        dims = [0] if self.per == "coordinate" else [0] + list(range(2, x.dim()))
+        self.shift.copy_(-x.mean(dim=dims, keepdim=True).reshape(self.shift.shape))
+        self.initialized.fill_(True)
+
+    def forward(self, x: Tensor, context: Optional[Tensor] = None) -> Tensor:
+        if self.training and not bool(self.initialized):
+            self.data_init(x.detach())
+        return x + self.shift
+
+    def inverse(self, z: Tensor, context: Optional[Tensor] = None) -> Tensor:
+        return z - self.shift
+
+    def log_abs_det(self) -> Tensor:
+        return self.shift.new_zeros(())
+
+    def extra_repr(self) -> str:
+        return f"event_shape={self.event_shape}, per={self.per!r}"
 
 
 # --------------------------------------------------------------------------- permutations

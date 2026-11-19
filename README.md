@@ -96,6 +96,7 @@ assert flow.is_piecewise_affine()
 | `HouseholderLinear`, `OrthogonalLinear` (Cayley / exp) | ±1 | ✓ | Isometric mixing, condition number 1 |
 | `ActNorm` | free / 1 (`zero_sum=True`) | ✓ | Data-dependent initialization |
 | `GlobalScale` | `D·log s` | ✓ | The single "uniform scaling" parameter |
+| `Shift` | 1 | ✓ | Per-coordinate bias with data init; keeps the latents centred |
 | `Squeeze`, `HaarWavelet`, `Patchify`, `Permutation` | ±1 | ✓ | Reshapes and orthonormal transforms |
 
 \*Given piecewise-affine (ReLU) conditioners. `merge_linear` collapses

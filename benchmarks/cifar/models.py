@@ -22,7 +22,7 @@ import torch
 from torch import Tensor, nn
 
 from cjd_flows.bijections.coupling import SplitAdditiveCoupling, _SplitCoupling
-from cjd_flows.bijections.linear import GlobalScale, Permutation
+from cjd_flows.bijections.linear import GlobalScale, Permutation, Shift
 from cjd_flows.bijections.reshape import Squeeze
 from cjd_flows.conditioners import JetConditioner
 from cjd_flows.core import Chain, Flow, StandardNormal
@@ -75,8 +75,8 @@ class VariableDetFlow(Flow):
         z = x
         for b in self.bijection:
             if hasattr(b, "forward_with_logdet"):
-                z, l = b.forward_with_logdet(z, ctx)
-                ld = ld + l
+                z, ldj = b.forward_with_logdet(z, ctx)
+                ld = ld + ldj
             else:
                 z = b(z, ctx)
                 ld = ld + b.log_abs_det()
@@ -115,8 +115,13 @@ def build_flow(
     context_dim: int = 0,
     seed: int = 0,
     conditioner: str = "jet",
+    shift: bool = True,
 ) -> Flow:
-    """Builds one of the study variants. ``base`` overrides the base distribution."""
+    """Builds one of the study variants. ``base`` overrides the base distribution.
+
+    ``shift`` adds a data-initialized :class:`Shift` before the global scale
+    (without it, short runs end with off-centre latents and colour-cast samples).
+    """
     torch.manual_seed(seed)
     E, depth, L = SIZES[size]
     ev = tuple(image_shape)
@@ -139,6 +144,8 @@ def build_flow(
             layers.append(AffineJetCoupling(ev, cond, split=split, parity=parity))
         else:
             layers.append(SplitAdditiveCoupling(ev, cond, split=split, parity=parity))
+    if shift:
+        layers.append(Shift(ev))
     layers.append(GlobalScale(ev, init=1.0))
 
     if base is None:

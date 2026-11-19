@@ -9,12 +9,13 @@ flow from the library's building blocks::
 
 Every flow has the structure
 
-    [block_1, ..., block_n, final_linear, GlobalScale]
+    [block_1, ..., block_n, final_linear, Shift, GlobalScale]
 
 with ``block_i = [mix_i, coupling_i]`` or, with ``conjugate=True``,
 ``block_i = [mix_i, coupling_i, mix_i^{-1}]`` (the "adjoint" blocks
-``A^{-1} ∘ C ∘ A`` of VeriFlow / USFlows). Only the final linear layer and the
-global scale change volume, so ``log|det J|`` is a single learnable constant.
+``A^{-1} ∘ C ∘ A`` of VeriFlow / USFlows). The :class:`Shift` centres the
+latents (data-initialized). Only the final linear layer and the global scale
+change volume, so ``log|det J|`` is a single learnable constant.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from cjd_flows.bijections.linear import (
     LULinear,
     OrthogonalLinear,
     Permutation,
+    Shift,
 )
 from cjd_flows.conditioners import MADE, MLP, ConvNet, JetConditioner
 from cjd_flows.core import (
@@ -174,6 +176,7 @@ def USFlow(
     mixing: Optional[str] = "lu",
     conjugate: bool = False,
     final_linear: bool = True,
+    shift: Optional[str] = "coordinate",
     global_scale: bool = True,
     base: Union[str, BaseDistribution] = "gaussian",
     p: float = 2.0,
@@ -202,6 +205,9 @@ def USFlow(
             ``"permutation"``, ``"actnorm"`` or ``None``.
         conjugate: use adjoint blocks ``A^{-1} C A`` (requires ``mixing``).
         final_linear: append a free LU layer at the end.
+        shift: append a learnable, data-initialized :class:`Shift` before the
+            global scale: ``"coordinate"`` (one offset per latent entry),
+            ``"channel"`` or ``None``.
         global_scale: append a learnable scalar scale (the "uniform scaling").
         base: base distribution name or instance, see :func:`make_base`.
         p: norm of the radial base.
@@ -248,6 +254,8 @@ def USFlow(
             layers.append(mix.inv)
     if final_linear:
         layers.append(LULinear(shape))
+    if shift is not None:
+        layers.append(Shift(shape, per=shift))
     if global_scale:
         layers.append(GlobalScale(shape))
     return Flow(Chain(*layers), make_base(base, shape, p=p, n_components=n_components),

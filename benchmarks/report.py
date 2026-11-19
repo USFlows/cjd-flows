@@ -17,7 +17,7 @@ from statistics import mean, stdev
 def load_jsonl(path: Path):
     if not path.exists():
         return []
-    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
 def fmt(vals, digits=3):

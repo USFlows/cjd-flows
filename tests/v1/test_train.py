@@ -345,3 +345,20 @@ def test_flow_fit_method():
     flow = tiny_flow()
     res = flow.fit(gauss_data(256), epochs=1)
     assert isinstance(res, TrainResult)
+
+
+def test_fit_data_inits_shift_before_ema():
+    from cjd_flows.bijections.linear import Shift
+    from cjd_flows.models import USFlow
+
+    torch.manual_seed(0)
+    x = torch.randn(512, 4) + torch.tensor([5.0, -3.0, 2.0, 0.0])
+    flow = USFlow((4,), blocks=2, hidden=(16,))
+    shift = next(m for m in flow.modules() if isinstance(m, Shift))
+    assert not shift.initialized
+    fit(flow, x, epochs=1, max_steps=1, lr=1e-6, ema_decay=0.999, restore="ema", seed=0)
+    assert shift.initialized
+    # the EMA (decay 0.999, one step) must start from the data init, not from zero
+    with torch.no_grad():
+        z = flow.transform(x)
+    assert z.mean(0).abs().max() < 0.5

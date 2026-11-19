@@ -31,6 +31,28 @@ DataLike = Union[Tensor, Dataset, DataLoader]
 
 
 # ---------------------------------------------------------------------- EMA
+@torch.no_grad()
+def _data_init(flow: nn.Module, batches, device, dtype, batch_context: bool) -> None:
+    """Runs data-dependent initialization (:class:`Shift`, :class:`ActNorm`) on the first batch.
+
+    Done before the optimizer and the EMA are created, so that the EMA starts
+    from the initialized parameters instead of averaging them in.
+    """
+    pending = [m for m in flow.modules() if hasattr(m, "data_init") and not bool(getattr(m, "initialized", True))]
+    if not pending:
+        return
+    x, ctx = _unpack(next(iter(batches)), device, dtype, batch_context)
+    was_training = flow.training
+    flow.train()
+    if ctx is not None and ctx.shape[1] != int(getattr(flow, "context_dim", 0) or 0):
+        ctx = None  # e.g. soft training appends a noise column later; use the default context
+    if ctx is not None:
+        flow.log_prob(x, ctx)
+    else:
+        flow.log_prob(x)
+    flow.train(was_training)
+
+
 class EMA:
     """Exponential moving average of a module's parameters.
 
@@ -602,6 +624,7 @@ def fit(
         total_steps = min(total_steps, max_steps)
     n_train = _num_samples(train_data, batches)
 
+    _data_init(flow, batches, device, dtype, batch_context)
     opt = _make_optimizer(flow, optimizer, lr, weight_decay, betas, scale_lr_mult)
     warmup = warmup_steps if warmup_steps is not None else int(round(warmup_frac * total_steps))
     sched = torch.optim.lr_scheduler.LambdaLR(opt, _lr_lambda(warmup, total_steps, schedule, min_lr_ratio))

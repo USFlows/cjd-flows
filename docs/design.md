@@ -32,7 +32,7 @@ See `src/cjd_flows/core.py`:
 |---|---|
 | `core.py` | Contract, `Chain`, `Flow`, `StandardNormal` |
 | `testing.py` | `check_bijection`, `jacobian_log_abs_det`, `check_flow_normalization` |
-| `bijections/linear.py` | LU (free / SL(n) unit-det), Householder (efficient), orthogonal (Cayley / matrix-exp), ActNorm (free or zero-sum log-scale), `GlobalScale`, permutations, all applied channel-wise ("one-star conv") |
+| `bijections/linear.py` | LU (free / SL(n) unit-det), Householder (efficient), orthogonal (Cayley / matrix-exp), ActNorm (free or zero-sum log-scale), `GlobalScale`, `Shift` (per-coordinate bias, det 1, data init), permutations, all applied channel-wise ("one-star conv") |
 | `bijections/coupling.py` | Additive masked coupling (checkerboard / channel / custom mask), split coupling (channel/spatial, Jet-style), GIN coupling (zero-sum log-scale, bounded) |
 | `bijections/autoregressive.py` | Shift-only autoregressive layers (MADE for vectors), det = 1 |
 | `bijections/reshape.py` | Squeeze (space-to-depth), Haar wavelet (orthonormal), Patchify |
