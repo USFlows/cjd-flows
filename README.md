@@ -96,7 +96,7 @@ assert flow.is_piecewise_affine()
 | `HouseholderLinear`, `OrthogonalLinear` (Cayley / exp) | ±1 | ✓ | Isometric mixing, condition number 1 |
 | `ActNorm` | free / 1 (`zero_sum=True`) | ✓ | Data-dependent initialization |
 | `GlobalScale` | `D·log s` | ✓ | The single "uniform scaling" parameter |
-| `Shift` | 1 | ✓ | Per-coordinate bias with data init; keeps the latents centred |
+| `Shift` | 1 | ✓ | Per-coordinate bias, initialized to centre the latents of the first batch |
 | `Squeeze`, `HaarWavelet`, `Patchify`, `Permutation` | ±1 | ✓ | Reshapes and orthonormal transforms |
 
 \*Given piecewise-affine (ReLU) conditioners. `merge_linear` collapses
@@ -142,7 +142,7 @@ latent representations by the data density.
 
 | US flow | Non-US flow |
 |---|---|
-| ![US](docs/images/contour_latent_2d_gmm_US_density.png) | ![Non-US](docs/images/contour_latent_2d_gmm_Non-US_density.png) |
+| ![US](https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/contour_latent_2d_gmm_US_density.png) | ![Non-US](https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/contour_latent_2d_gmm_Non-US_density.png) |
 
 For the US flow, density decreases monotonically with the latent norm. For a
 non-US flow, high-density regions are skewed against the latent geometry.
@@ -187,8 +187,8 @@ If you use this library, please cite the VeriFlow paper:
 
 GitHub citation support and downloadable formats:
 
-- [`CITATION.cff`](CITATION.cff) (for GitHub's "Cite this repository" widget)
-- [`CITATION.bib`](CITATION.bib) (downloadable BibTeX)
+- [`CITATION.cff`](https://github.com/USFlows/cjd-flows/blob/main/CITATION.cff) (for GitHub's "Cite this repository" widget)
+- [`CITATION.bib`](https://github.com/USFlows/cjd-flows/blob/main/CITATION.bib) (downloadable BibTeX)
 
 <details>
 <summary>BibTeX</summary>
@@ -222,8 +222,8 @@ GitHub citation support and downloadable formats:
 ## Acknowledgment
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/logos/baiaa-logo.svg">
-  <img src="docs/images/logos/baiaa-logo-black.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/logos/baiaa-logo.svg">
+  <img src="https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/logos/baiaa-logo-black.svg" alt="Bavarian AI Act Accelerator">
 </picture>
 
 The Bavarian AI Act Accelerator is a two-year project funded by the Bavarian

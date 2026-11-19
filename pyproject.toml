@@ -71,6 +71,7 @@ Homepage = "https://github.com/USFlows/cjd-flows"
 Repository = "https://github.com/USFlows/cjd-flows"
 Documentation = "https://github.com/USFlows/cjd-flows/tree/main/docs"
 Issues = "https://github.com/USFlows/cjd-flows/issues"
+Changelog = "https://github.com/USFlows/cjd-flows/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
@@ -95,6 +96,7 @@ include = [
     "/LICENCE.md",
     "/CITATION.cff",
     "/CITATION.bib",
+    "/CHANGELOG.md",
 ]
 exclude = ["__pycache__", "*.py[cod]"]
 
