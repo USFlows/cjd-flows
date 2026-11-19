@@ -162,10 +162,11 @@ non-US flow, high-density regions are skewed against the latent geometry.
 
 ## Benchmarks
 
-`benchmarks/` contains the CPU density suite (`benchmarks/density/run.py`: toy
-2-D data, the asymmetric GMM of the USF paper and the MAF tabular suite) and the
-CIFAR-10 scaling study (`benchmarks/cifar/`). Results are summarized in
-`docs/benchmarks.md`.
+`benchmarks/` contains the scripts used to evaluate the library: a CPU density
+suite (`benchmarks/density/run.py`: toy 2-D data, the asymmetric GMM of the USF
+paper and the MAF tabular suite) and a CIFAR-10 study (`benchmarks/cifar/`).
+Run outputs go to `benchmarks/runs/`; `benchmarks/report.py` aggregates them
+into Markdown tables.
 
 ## Legacy API
 

@@ -604,13 +604,13 @@ class Shift(Bijection):
     """Learnable translation ``y = x + b`` (volume preserving, ``log|det J| = 0``).
 
     Constant-Jacobian flows built only from additive couplings have no explicit
-    bias: the couplings have to learn to centre the latents themselves, which
-    can take thousands of steps. Until then the data latents sit off the base's
-    centre, which costs likelihood and makes all samples share the colour/
-    content of the image at ``z = 0``. A ``Shift`` right before the global scale
-    removes that offset directly. With ``data_init=True`` it is set to minus the
-    mean of the first training batch (like :class:`ActNorm`; the persistent
-    buffer ``initialized`` prevents re-initialization after loading a state dict).
+    bias; the couplings have to centre the latents themselves. A ``Shift``
+    before the global scale gives the flow a direct, volume-preserving bias.
+    With ``data_init=True`` it is set to minus the mean of the first training
+    batch (like :class:`ActNorm`; the persistent buffer ``initialized`` prevents
+    re-initialization after loading a state dict), so training starts with
+    centred latents. It does not prevent the couplings from moving the latents
+    off-centre again during training.
 
     Args:
         event_shape: ``(C, *spatial)`` or ``(D,)``.
