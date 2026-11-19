@@ -15,14 +15,14 @@ A constant determinant gives three things:
 * **Stable training.** Additive and volume-preserving layers do not suffer
   from exploding or vanishing Jacobians.
 
-The library's main ingredient is the **learnable radial base distribution**
-introduced with VeriFlow: an Lp-radial base whose 1-D norm distribution is
-learned jointly with the flow. A uniformly scaling flow cannot change the
-distribution of density values of its base, so with a fixed base its
-expressivity is limited (Draxler et al., ICML 2024, prove that
-volume-preserving flows with a fixed base are not universal). The learnable
-norm distribution removes exactly this limitation while keeping the latent
-level-set geometry intact.
+The library's main ingredient is the **learnable radial base distribution** of
+VeriFlow, first presented at AISoLA 2023 (Abu Zaid, Diekmann, Neider): an
+Lp-radial base whose 1-D norm distribution is learned jointly with the flow. A
+uniformly scaling flow cannot change the distribution of density values of its
+base, so with a fixed base its expressivity is limited (Draxler et al., ICML
+2024, prove that volume-preserving flows with a fixed base are not universal).
+The learnable norm distribution removes exactly this limitation while keeping
+the latent level-set geometry intact.
 
 ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
 ![ONNX](https://img.shields.io/badge/ONNX-005CED?logo=onnx&logoColor=white)
@@ -212,6 +212,8 @@ GitHub citation support and downloadable formats:
 
 ## References
 
+* Abu Zaid, Diekmann, Neider (2023). *Distribution-aware neuro-symbolic verification.* AISoLA 2023, LNCS, pp. 445–447.
+* Abu Zaid, Neider, Yalciner (2026). *VeriFlow: Modeling Distributions for Neural Network Verification.* AAAI.
 * Draxler, Wahl, Schnörr, Köthe (2024). *On the Universality of Volume-Preserving and Coupling-Based Normalizing Flows.* ICML.
 * Dinh, Krueger, Bengio (2015). *NICE: Non-linear Independent Components Estimation.*
 * Sorrenson, Rother, Köthe (2020). *Disentanglement by Nonlinear ICA with General Incompressible-flow Networks (GIN).* ICLR.
