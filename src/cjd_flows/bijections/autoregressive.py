@@ -218,6 +218,11 @@ class TransformerAutoregressive(VolumePreserving):
     ``log_prob`` are not affected. Check ``inverse(forward(x))`` on trained
     models, or lower ``clamp``.
 
+    Under fp16/bf16 autocast the cached inverse rounds the shifts differently
+    from the parallel ``forward``, so ``inverse(forward(x))`` is only exact to
+    about half precision (also with ``scale=False``). Train with autocast if
+    you like, but sample and invert without it.
+
     Args:
         event_shape: ``(N, D)``: number of tokens and features per token.
         embed_dim: transformer width.
