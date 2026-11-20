@@ -316,7 +316,7 @@ class TransformerAutoregressive(VolumePreserving):
         if self.reverse:
             x = x.flip(1)
         t, s = self._scale_shift(self._params(x, self._embed_context(context, x.shape[0], x)))
-        z = x + t if s is None else x * s.exp() + t
+        z = (x + t if s is None else x * s.exp() + t).to(x.dtype)
         return z.flip(1) if self.reverse else z
 
     def inverse(self, z: Tensor, context: Optional[Tensor] = None) -> Tensor:
@@ -332,7 +332,7 @@ class TransformerAutoregressive(VolumePreserving):
             for block, cache in zip(self.blocks, caches):
                 h = block.step(h, c, cache)
             t, s = self._scale_shift(self.head(self.norm_out(h))[:, 0])
-            x_i = z[:, i] - t if s is None else (z[:, i] - t) * (-s).exp()
+            x_i = (z[:, i] - t if s is None else (z[:, i] - t) * (-s).exp()).to(z.dtype)
             xs.append(x_i)
             if i + 1 < N:
                 h = self.inp(x_i).unsqueeze(1)

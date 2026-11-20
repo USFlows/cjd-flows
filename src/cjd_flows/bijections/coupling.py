@@ -369,5 +369,5 @@ class GINCoupling(_SplitCoupling):
     def _transform_b(self, xb: Tensor, params: Tensor, inverse: bool) -> Tensor:
         s, t = self._scale_shift(params)
         if inverse:
-            return (xb - t) * torch.exp(-s)
-        return xb * torch.exp(s) + t
+            return ((xb - t) * torch.exp(-s)).to(xb.dtype)
+        return (xb * torch.exp(s) + t).to(xb.dtype)

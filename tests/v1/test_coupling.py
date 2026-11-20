@@ -347,6 +347,24 @@ def test_scale_layers_keep_zero_sum_under_bf16_autocast():
         assert s.sum(dim=-1).abs().max() < 1e-5
 
 
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("scale", [False, True])
+def test_half_precision_layers_keep_dtype(dtype, scale):
+    torch.manual_seed(0)
+    layers = [
+        (perturb(TransformerAutoregressive((6, 4), embed_dim=16, depth=1, num_heads=2, scale=scale), 0.05), (6, 4)),
+        (perturb(GINCoupling((6,), mlp_factory(0)), 0.05), (6,)),
+    ]
+    for layer, shape in layers:
+        layer = layer.to(dtype)
+        x = torch.randn(3, *shape, dtype=dtype)
+        z = layer(layer(x))  # composes with itself
+        assert z.dtype == dtype
+        xr = layer.inverse(layer.inverse(z))
+        assert xr.dtype == dtype
+        assert torch.allclose(xr.float(), x.float(), atol=0.1)
+
+
 def test_transformer_autoregressive_validates_shape():
     with pytest.raises(ValueError):
         TransformerAutoregressive((2, 3, 3))
