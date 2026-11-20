@@ -34,7 +34,7 @@ See `src/cjd_flows/core.py`:
 | `testing.py` | `check_bijection`, `jacobian_log_abs_det`, `check_flow_normalization` |
 | `bijections/linear.py` | LU (free / SL(n) unit-det), Householder (efficient), orthogonal (Cayley / matrix-exp), ActNorm (free or zero-sum log-scale), `GlobalScale`, `Shift` (per-coordinate bias, det 1, data init), permutations, all applied channel-wise ("one-star conv") |
 | `bijections/coupling.py` | Additive masked coupling (checkerboard / channel / custom mask), split coupling (channel/spatial, Jet-style), GIN coupling (zero-sum log-scale, bounded) |
-| `bijections/autoregressive.py` | Shift-only autoregressive layers (MADE for vectors), det = 1 |
+| `bijections/autoregressive.py` | Autoregressive layers with det = 1: MADE shifts (vectors), causal convolutions, causal transformer over tokens |
 | `bijections/reshape.py` | Squeeze (space-to-depth), Haar wavelet (orthonormal), Patchify |
 | `conditioners.py` | `MLP`, `ConvNet` (gated, residual, ND), `MADE`, `JetConditioner` (ViT); optional spectral norm; zero-init output |
 | `radial/` | Lp-radial base distributions with learnable 1-D norm distributions (`norms.py`), geometry (`geometry.py`), `RadialBase` (`base.py`), multi-centre radial mixtures, level-set / HDR utilities (`levelsets.py`) |

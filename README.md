@@ -92,6 +92,7 @@ assert flow.is_piecewise_affine()
 | `GINCoupling` | 1 | ✗ | Affine coupling with zero-sum, bounded log-scale (Sorrenson et al. 2020) |
 | `ShiftAutoregressive` | 1 | ✓ | MADE shifts: more expressive than coupling; inverse is sequential |
 | `MaskedConvAutoregressive` | 1 | ✓ | PixelCNN-style shift layer (experimental) |
+| `TransformerAutoregressive` | 1 | ✗ | Causal transformer over tokens (TarFlow-style); shift or zero-sum scale + shift; KV-cached inverse |
 | `LULinear` | free / 1 (`unit_det=True`) | ✓ | One-star (1×1) channel mixing; log-normal prior on the diagonal |
 | `HouseholderLinear`, `OrthogonalLinear` (Cayley / exp) | ±1 | ✓ | Isometric mixing, condition number 1 |
 | `ActNorm` | free / 1 (`zero_sum=True`) | ✓ | Data-dependent initialization |

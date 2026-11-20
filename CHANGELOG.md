@@ -21,7 +21,8 @@ pyro-based API of 0.9 stays available as an optional extra.
 - **Builders** (`cjd_flows.models`): `USFlow(...)` and the verification preset
   `VeriFlow(...)` (piecewise affine, adjoint LU blocks, monotone L1-radial base).
 - **Bijections** (`cjd_flows.bijections`): split and masked additive couplings,
-  GIN couplings, shift-only autoregressive layers (MADE), LU (free or unit
+  GIN couplings, autoregressive layers (MADE shifts, causal convolutions, and a
+  causal transformer over tokens with an optional zero-sum scale), LU (free or unit
   determinant), Householder, orthogonal (Cayley / matrix exponential), ActNorm,
   `GlobalScale`, `Shift` (data-initialized bias with unit determinant),
   permutations, Squeeze, Haar wavelet and Patchify; `merge_linear` for export.
