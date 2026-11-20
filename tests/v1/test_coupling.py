@@ -332,6 +332,21 @@ def test_transformer_autoregressive_no_unused_parameters(ctx):
     assert not unused, unused
 
 
+def test_scale_layers_keep_zero_sum_under_bf16_autocast():
+    torch.manual_seed(0)
+    tar = perturb(TransformerAutoregressive((6, 4), embed_dim=16, depth=1, num_heads=2, scale=True), 1.0)
+    x = torch.randn(3, 6, 4)
+    gin = GINCoupling((6,), mlp_factory(0))
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        params = tar._params(x, tar._embed_context(None, 3, x))
+        assert params.dtype == torch.bfloat16
+        _, st = tar._scale_shift(params)
+        sg, _ = gin._scale_shift(torch.randn(3, 6, dtype=torch.bfloat16) * 3)
+    for s in (st, sg):
+        assert s.dtype == torch.float32
+        assert s.sum(dim=-1).abs().max() < 1e-5
+
+
 def test_transformer_autoregressive_validates_shape():
     with pytest.raises(ValueError):
         TransformerAutoregressive((2, 3, 3))

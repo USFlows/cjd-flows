@@ -302,6 +302,9 @@ class TransformerAutoregressive(VolumePreserving):
         return self.head(self.norm_out(h))
 
     def _scale_shift(self, params: Tensor) -> Tuple[Tensor, Optional[Tensor]]:
+        # zero-sum centring and exp in >= fp32, also under fp16/bf16 autocast
+        if params.dtype in (torch.float16, torch.bfloat16):
+            params = params.float()
         if not self.scale:
             return params, None
         s, t = params.chunk(2, dim=-1)

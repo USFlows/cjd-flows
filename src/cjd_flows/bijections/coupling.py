@@ -356,6 +356,9 @@ class GINCoupling(_SplitCoupling):
         self.piecewise_affine = False
 
     def _scale_shift(self, params: Tensor) -> Tuple[Tensor, Tensor]:
+        # zero-sum centring and exp in >= fp32, also under fp16/bf16 autocast
+        if params.dtype in (torch.float16, torch.bfloat16):
+            params = params.float()
         s, t = params.chunk(2, dim=1)
         if self.clamp is not None:
             s = self.clamp * torch.tanh(s / self.clamp)
