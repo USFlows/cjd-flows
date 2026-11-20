@@ -320,6 +320,18 @@ def test_transformer_autoregressive_in_flow():
     assert s.shape == (4, *shape)
 
 
+@pytest.mark.parametrize("ctx", [0, CTX])
+def test_transformer_autoregressive_no_unused_parameters(ctx):
+    # every parameter must receive a gradient (DistributedDataParallel default)
+    torch.manual_seed(0)
+    layer = perturb(_tar((4, 3), ctx, scale=True, grad_checkpointing=True))
+    x, c = _inputs((4, 3), ctx)
+    layer.train()
+    layer(x, c).square().sum().backward()
+    unused = [n for n, p in layer.named_parameters() if p.grad is None]
+    assert not unused, unused
+
+
 def test_transformer_autoregressive_validates_shape():
     with pytest.raises(ValueError):
         TransformerAutoregressive((2, 3, 3))

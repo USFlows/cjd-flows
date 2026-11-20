@@ -32,6 +32,7 @@ from typing import Iterable, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn.functional as F
+import torch.utils.checkpoint
 from torch import Tensor, nn
 from torch.nn.utils.parametrizations import spectral_norm as _spectral_norm
 

@@ -19,6 +19,7 @@ import math
 from typing import Optional, Sequence, Tuple, Union
 
 import torch
+import torch.utils.checkpoint
 from torch import Tensor, nn
 
 from cjd_flows.conditioners import MADE, _JetBlock, _prepare_context, _TokenMLP, make_activation
@@ -266,8 +267,15 @@ class TransformerAutoregressive(VolumePreserving):
         self.inp = nn.Linear(D, embed_dim)
         self.start = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.randn(1, N, embed_dim) * 0.02)
-        self.ctx_embed = _TokenMLP(self.context_dim, embed_dim, embed_dim) if self.context_dim > 0 else None
-        self.null_ctx = nn.Parameter(torch.zeros(embed_dim))
+        # unconditional layers use a learned constant embedding; conditional
+        # layers embed the (zero-filled if missing) context, so they carry no
+        # parameter that would stay unused (DistributedDataParallel)
+        if self.context_dim > 0:
+            self.ctx_embed = _TokenMLP(self.context_dim, embed_dim, embed_dim)
+            self.null_ctx = None
+        else:
+            self.ctx_embed = None
+            self.null_ctx = nn.Parameter(torch.zeros(embed_dim))
         self.blocks = nn.ModuleList(
             _JetBlock(embed_dim, num_heads, mlp_ratio, qk_norm, True, nonlinearity) for _ in range(depth)
         )
