@@ -3,7 +3,11 @@ import math
 import pytest
 import torch
 
-from cjd_flows.bijections.autoregressive import MaskedConvAutoregressive, ShiftAutoregressive
+from cjd_flows.bijections.autoregressive import (
+    MaskedConvAutoregressive,
+    ShiftAutoregressive,
+    TransformerAutoregressive,
+)
 from cjd_flows.bijections.coupling import (
     GINCoupling,
     MaskedAdditiveCoupling,
@@ -241,6 +245,86 @@ def test_masked_conv_autoregressive(shape, ctx):
     assert off[allowed].abs().sum() > 0
 
 
+def _tar(shape, ctx, **kw):
+    kw = {"embed_dim": 16, "depth": 2, "num_heads": 2, "context_dim": ctx, **kw}
+    return TransformerAutoregressive(shape, **kw).double()
+
+
+@pytest.mark.parametrize("shape", [(5, 3), (4, 1)])
+@pytest.mark.parametrize("ctx", [0, CTX])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("scale", [False, True])
+def test_transformer_autoregressive(shape, ctx, reverse, scale):
+    torch.manual_seed(0)
+    layer = _tar(shape, ctx, reverse=reverse, scale=scale)
+    x, c = _inputs(shape, ctx)
+    assert torch.equal(layer(x, c), x)
+    perturb(layer)
+    assert not layer.is_piecewise_affine() and layer.volume_preserving
+    check_bijection(layer, x, c)
+    # block lower triangular in token order; identity (shift) or diagonal (scale) blocks
+    N, D = shape
+    cc = None if c is None else c[:1]
+    J = torch.autograd.functional.jacobian(lambda v: layer(v.reshape(1, N, D), cc).reshape(-1), x[0].reshape(-1))
+    tok = torch.arange(N).repeat_interleave(D)
+    if reverse:
+        tok = N - 1 - tok
+    earlier = tok[:, None] > tok[None, :]
+    same = tok[:, None] == tok[None, :]
+    assert torch.all(J[~(earlier | same)] == 0)
+    diag_block = J[same].reshape(N, D, D)
+    assert torch.allclose(diag_block, torch.diag_embed(torch.diagonal(diag_block, dim1=1, dim2=2)))
+    if not scale:
+        assert torch.allclose(torch.diagonal(J), torch.ones(N * D, dtype=J.dtype))
+    elif D > 1:
+        assert not torch.allclose(torch.diagonal(J), torch.ones(N * D, dtype=J.dtype))
+    assert J[earlier].abs().sum() > 0
+
+
+def test_transformer_autoregressive_cache_matches_parallel():
+    torch.manual_seed(0)
+    layer = perturb(_tar((6, 2), CTX, depth=3))
+    x, c = _inputs((6, 2), CTX)
+    h_par = layer._params(x, layer._embed_context(c, x.shape[0], x))
+    # token-by-token with the key/value cache (two tokens in the second chunk)
+    cx = layer._embed_context(c, x.shape[0], x)
+    caches = [dict() for _ in layer.blocks]
+    inp = torch.cat([layer.start.expand(x.shape[0], -1, -1), layer.inp(x[:, :-1])], dim=1) + layer.pos_embed
+    outs = []
+    for sl in [slice(0, 1), slice(1, 3), slice(3, 6)]:
+        h = inp[:, sl]
+        for block, cache in zip(layer.blocks, caches):
+            h = block.step(h, cx, cache)
+        outs.append(layer.head(layer.norm_out(h)))
+    assert torch.allclose(torch.cat(outs, dim=1), h_par, atol=1e-10)
+
+
+def test_transformer_autoregressive_in_flow():
+    from cjd_flows import Flow, StandardNormal
+    from cjd_flows.bijections.reshape import Patchify
+
+    torch.manual_seed(0)
+    shape = (2, 4, 4)
+    tok = (4, 8)
+    flow = Flow(
+        [Patchify(shape, 2), _tar(tok, 0), _tar(tok, 0, reverse=True, scale=True), _tar(tok, 0, grad_checkpointing=True)],
+        StandardNormal(tok),
+    ).double()
+    perturb(flow, 0.1)
+    x = torch.randn(3, *shape, dtype=torch.float64)
+    lp = flow.log_prob(x)
+    assert lp.shape == (3,) and torch.isfinite(lp).all()
+    lp.sum().backward()
+    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in flow.parameters() if p.requires_grad)
+    s = flow.sample(4)
+    assert s.shape == (4, *shape)
+
+
+def test_transformer_autoregressive_validates_shape():
+    with pytest.raises(ValueError):
+        TransformerAutoregressive((2, 3, 3))
+
+
 # ------------------------------------------------------------------ cuda
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="no cuda")
 def test_couplings_cuda():
@@ -251,6 +335,7 @@ def test_couplings_cuda():
         (MaskedAdditiveCoupling((6,), MLP(6, 6, context_dim=1), mask="checkerboard"), (6,)),
         (ShiftAutoregressive(6, MADE(6, context_dim=1)), (6,)),
         (MaskedConvAutoregressive((2, 3, 3), context_dim=1), (2, 3, 3)),
+        (TransformerAutoregressive((4, 3), embed_dim=16, depth=1, context_dim=1, scale=True), (4, 3)),
     ]
     for layer, shape in layers:
         layer = perturb(layer, 0.1).to(dev)

@@ -655,6 +655,27 @@ class _SelfAttention(nn.Module):
             out = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
         return self.proj(out.transpose(1, 2).reshape(B, N, D))
 
+    def step(self, x: Tensor, cache: dict) -> Tensor:
+        """Incremental causal attention for new tokens ``x`` of shape ``(B, T, D)``.
+
+        Keys and values of all earlier calls are kept in ``cache`` (a dict,
+        empty on the first call), so the result equals rows ``P..P+T-1`` of a
+        causal :meth:`forward` over the whole sequence (``P`` = cached length).
+        """
+        B, T, D = x.shape
+        q, k, v = self.qkv(x).reshape(B, T, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4).unbind(0)
+        q, k = self.q_norm(q), self.k_norm(k)
+        if "k" in cache:
+            k = torch.cat([cache["k"], k], dim=2)
+            v = torch.cat([cache["v"], v], dim=2)
+        cache["k"], cache["v"] = k, v
+        mask = None
+        if T > 1:
+            P = k.shape[2] - T
+            mask = torch.ones(T, P + T, dtype=torch.bool, device=x.device).tril(diagonal=P)
+        out = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
+        return self.proj(out.transpose(1, 2).reshape(B, T, D))
+
 
 class _JetBlock(nn.Module):
     """Pre-LN ViT block with adaLN-zero modulation (gates start closed -> identity)."""
@@ -672,6 +693,12 @@ class _JetBlock(nn.Module):
     def forward(self, x: Tensor, c: Tensor, padding_mask: Optional[Tensor] = None) -> Tensor:
         s1, sc1, g1, s2, sc2, g2 = self.ada(c).unsqueeze(1).chunk(6, dim=-1)
         x = x + g1 * self.attn(self.norm1(x) * (1 + sc1) + s1, padding_mask=padding_mask)
+        return x + g2 * self.mlp(self.norm2(x) * (1 + sc2) + s2)
+
+    def step(self, x: Tensor, c: Tensor, cache: dict) -> Tensor:
+        """Incremental version of :meth:`forward` for causal blocks (see :meth:`_SelfAttention.step`)."""
+        s1, sc1, g1, s2, sc2, g2 = self.ada(c).unsqueeze(1).chunk(6, dim=-1)
+        x = x + g1 * self.attn.step(self.norm1(x) * (1 + sc1) + s1, cache)
         return x + g2 * self.mlp(self.norm2(x) * (1 + sc2) + s2)
 
 
