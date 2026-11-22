@@ -208,3 +208,20 @@ def test_mnist_loader(backend):
     assert v.shape == (784,) and v.min() >= 0 and v.max() < 1
     rest = load_images("mnist", classes=[3], split="test", exclude_classes=True, backend=backend)
     assert len(rest) == 10000 - 1010
+
+
+def test_tabular_missing_dependency_has_install_hint(monkeypatch):
+    import importlib
+
+    from cjd_flows.data import tabular
+
+    real = importlib.import_module
+
+    def fake(name, *args, **kwargs):
+        if name == "h5py":
+            raise ImportError("No module named 'h5py'")
+        return real(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib, "import_module", fake)
+    with pytest.raises(ImportError, match=r"cjd-flows\[tabular\]"):
+        tabular._require("h5py", "BSDS300")

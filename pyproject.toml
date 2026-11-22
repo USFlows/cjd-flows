@@ -39,6 +39,8 @@ legacy = ["pyro-ppl>=1.9"]
 onnx = ["onnx>=1.16", "onnxscript>=0.1", "onnxruntime>=1.17"]
 eval = ["scipy>=1.11", "scikit-learn>=1.4", "matplotlib>=3.8"]
 vision = ["torchvision>=0.17"]
+# First preprocessing of the MAF tabular benchmarks (cjd_flows.data.tabular).
+tabular = ["pandas>=2.2", "h5py>=3.10"]
 docs = [
     "sphinx>=7",
     "furo",

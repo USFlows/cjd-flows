@@ -57,7 +57,7 @@ pyro-based API of 0.9 stays available as an optional extra.
 
 - Packaging moved from Poetry to [uv](https://docs.astral.sh/uv/) and hatchling.
   The core only depends on `torch` and `numpy`; everything else is an extra
-  (`legacy`, `onnx`, `eval`, `vision`, `docs`).
+  (`legacy`, `onnx`, `eval`, `vision`, `tabular`, `docs`).
 - Requires Python ≥ 3.11 (3.10 has reached end of life; Pillow, pulled in by
   the `eval`/`vision` extras, no longer ships fixes for it).
 - `pyro-ppl` is no longer a dependency of the core. The 0.9 API

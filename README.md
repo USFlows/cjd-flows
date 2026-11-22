@@ -192,9 +192,11 @@ It works with v1 flows (radial or Gaussian base) and with the 0.9 flows.
 suite (`benchmarks/density/run.py`: toy 2-D data, the asymmetric GMM of the USF
 paper and the MAF tabular suite) and a CIFAR-10 study (`benchmarks/cifar/`).
 Run outputs go to `benchmarks/runs/`; `benchmarks/report.py` aggregates them
-into Markdown tables. The density suite needs no extras; the CIFAR study needs
-Pillow for the sample grids (`[vision]` or `[eval]` extra) and logs to
-TensorBoard if `tensorboard` is installed.
+into Markdown tables. The toy and GMM suites need no extras; the MAF tabular
+suite needs the `[tabular]` extra (pandas, h5py) for the first preprocessing of
+GAS, HEPMASS and BSDS300. The CIFAR study needs Pillow for the sample grids
+(`[vision]` or `[eval]` extra) and logs to TensorBoard if `tensorboard` is
+installed.
 
 ## Legacy API
 
