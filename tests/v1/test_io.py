@@ -284,3 +284,46 @@ def test_arguments_are_recorded_before_the_builder_mutates_them(tmp_path):
     x = torch.randn(4, 3)
     assert torch.equal(loaded.log_prob(x), flow.eval().log_prob(x))
     assert torch.equal(again.log_prob(x), flow.log_prob(x))
+
+
+def test_mixed_precision_dtypes_are_restored(tmp_path):
+    flow = _perturb(USFlow((3,), blocks=1, hidden=(8,), base="ggmix"))
+    flow.base.double()  # float64 base, float32 bijections
+    loaded = load(save(flow, tmp_path / "f.pt"))
+    for (name, a), (_, b) in zip(flow.state_dict().items(), loaded.state_dict().items()):
+        assert a.dtype == b.dtype, name
+        assert torch.equal(a, b), name
+    # also the non-persistent buffers that set the computation dtype of the base
+    assert cio._tensor_dtypes(loaded) == cio._tensor_dtypes(flow)
+    assert loaded.base.norm._ref.dtype == torch.float64
+    x = torch.randn(5, 3)
+    assert torch.equal(loaded.log_prob(x), flow.eval().log_prob(x))
+
+
+class _WithExtraState(torch.nn.Module):
+    def __init__(self, extra):
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.zeros(2))
+        self.extra = extra
+
+    def get_extra_state(self):
+        return self.extra
+
+    def set_extra_state(self, state):
+        self.extra = state
+
+
+def test_extra_state_plain_data_roundtrips(tmp_path):
+    m = _WithExtraState({"steps": 3, "tags": ["a", "b"]})
+    with pytest.warns(UserWarning):
+        path = save(m, tmp_path / "f.pt")
+    target = _WithExtraState(None)
+    load(path, model=target)
+    assert target.extra == {"steps": 3, "tags": ["a", "b"]}
+
+
+def test_extra_state_objects_are_rejected(tmp_path):
+    with pytest.raises(TypeError, match="weights-only"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            save(_WithExtraState(object()), tmp_path / "f.pt")

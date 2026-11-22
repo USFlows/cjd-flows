@@ -75,7 +75,7 @@ def register_builder(fn: Optional[Callable] = None, *, name: Optional[str] = Non
     JSON-serializable
     (numbers, strings, ``None``, lists/tuples, dicts with string keys);
     otherwise ``builder_config`` is ``None`` and the reason is kept in
-    ``builder_config_error``.
+    ``builder_config_error``. Tuples are recorded, and replayed, as lists.
 
     When a registered builder delegates to another one (e.g. ``VeriFlow``
     calls ``USFlow``) and returns its model, the outer call is recorded and the
@@ -199,6 +199,34 @@ def _call_builder(config: dict) -> nn.Module:
 
 
 # --------------------------------------------------------------------------- save / load
+def _portable(key: str, value: Any) -> Any:
+    """State-dict entry as stored: tensors on CPU; extra state must be plain data."""
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu()
+    try:  # e.g. get_extra_state(): only data that weights_only loading accepts
+        _to_json(value)
+    except TypeError as e:
+        raise TypeError(
+            f"state entry {key!r} is not a tensor or plain data ({e}); the weights-only file format "
+            "cannot store it"
+        ) from e
+    return value
+
+
+def _tensor_dtypes(model: nn.Module) -> Dict[str, str]:
+    """Dtypes of all floating parameters and buffers, including non-persistent ones."""
+    named = list(model.named_parameters()) + list(model.named_buffers())
+    return {n: str(t.dtype).replace("torch.", "") for n, t in named if t.is_floating_point()}
+
+
+def _restore_dtypes(model: nn.Module, dtypes: Dict[str, str]) -> None:
+    """Casts every floating parameter/buffer to its recorded dtype (mixed precision)."""
+    for name, t in list(model.named_parameters()) + list(model.named_buffers()):
+        want = dtypes.get(name)
+        if want is not None and t.is_floating_point() and str(t.dtype) != f"torch.{want}":
+            t.data = t.data.to(getattr(torch, want))
+
+
 def _float_dtype(module: nn.Module) -> Optional[torch.dtype]:
     for t in list(module.parameters()) + list(module.buffers()):
         if t.is_floating_point():
@@ -242,8 +270,9 @@ def save(flow: nn.Module, path: PathLike, metadata: Optional[dict] = None) -> Pa
         "library_version": __version__,
         "config": json.dumps(config) if config is not None else "",
         "dtype": str(dtype).replace("torch.", "") if dtype is not None else "",
+        "dtypes": json.dumps(_tensor_dtypes(flow)),
         "metadata": meta_json,
-        "state_dict": {k: v.detach().cpu() for k, v in flow.state_dict().items()},
+        "state_dict": {k: _portable(k, v) for k, v in flow.state_dict().items()},
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(payload, path)
@@ -290,8 +319,9 @@ def load(
         strict: passed to :meth:`~torch.nn.Module.load_state_dict`.
 
     Returns:
-        The flow in eval mode, with the saved dtype (when rebuilt) and the
-        saved weights and buffers (including data-dependent initialization
+        The flow in eval mode, with the saved dtype of every parameter and
+        buffer (when rebuilt, also for mixed precision) and the saved weights
+        and buffers (including data-dependent initialization
         flags such as :class:`~cjd_flows.bijections.Shift` ``initialized``).
     """
     payload = _read(path)
@@ -313,6 +343,7 @@ def load(
         model = _call_builder(config)
         if payload["dtype"]:
             model = model.to(getattr(torch, payload["dtype"]))
+        _restore_dtypes(model, json.loads(payload.get("dtypes") or "{}"))
         model.builder_config = config
         model.builder_config_error = None
     model.load_state_dict(payload["state_dict"], strict=strict)
