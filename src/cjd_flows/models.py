@@ -46,6 +46,7 @@ from cjd_flows.core import (
     StandardNormal,
     as_shape,
 )
+from cjd_flows.io import register_builder
 
 BASES = (
     "gaussian",
@@ -165,6 +166,7 @@ def _conditioner_factory(
     raise ValueError(f"unknown conditioner {conditioner!r}")
 
 
+@register_builder
 def USFlow(
     event_shape: ShapeLike,
     *,
@@ -262,6 +264,7 @@ def USFlow(
                 context_dim=context_dim)
 
 
+@register_builder
 def VeriFlow(
     event_shape: ShapeLike,
     *,

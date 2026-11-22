@@ -1,0 +1,240 @@
+"""Saving and loading flows together with their builder configuration.
+
+Flows built with a registered builder (:func:`~cjd_flows.models.USFlow`,
+:func:`~cjd_flows.models.VeriFlow`, or your own function decorated with
+:func:`register_builder`) remember the arguments they were built with
+(``flow.builder_config``). :func:`save` stores these arguments as JSON
+together with the weights, the dtype and the library version, so that
+:func:`load` can rebuild the flow without any code from the caller::
+
+    from cjd_flows import USFlow
+    from cjd_flows.io import load, save
+
+    flow = USFlow((2,), blocks=8, base="ggmix")
+    ...  # train
+    save(flow, "flow.pt")
+    flow = load("flow.pt")           # rebuilt from the stored configuration
+
+The file is a :func:`torch.save` archive of tensors, strings and numbers only,
+read with ``torch.load(..., weights_only=True)``; loading never executes
+pickled code. Flows that were not built by a registered builder, or whose
+builder arguments are not JSON-serializable (e.g. a custom conditioner
+factory or a base distribution instance), are saved without configuration and
+loaded into a model you construct yourself: ``load(path, model=my_flow)``.
+
+Optimizer, scheduler and EMA state are not part of the file.
+"""
+
+from __future__ import annotations
+
+import functools
+import inspect
+import json
+import warnings
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Union
+
+import torch
+from torch import nn
+
+__all__ = ["save", "load", "load_metadata", "register_builder", "FORMAT_VERSION"]
+
+#: Version of the file layout written by :func:`save`.
+FORMAT_VERSION = 1
+_FORMAT = "cjd-flows"
+
+_BUILDERS: Dict[str, Callable[..., nn.Module]] = {}
+
+PathLike = Union[str, Path]
+
+
+# --------------------------------------------------------------------------- config capture
+def _to_json(value: Any) -> Any:
+    """JSON-compatible copy of ``value`` (tuples become lists); raises TypeError otherwise."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_to_json(v) for v in value]
+    if isinstance(value, dict):
+        if not all(isinstance(k, str) for k in value):
+            raise TypeError("dict keys must be strings")
+        return {k: _to_json(v) for k, v in value.items()}
+    raise TypeError(f"{type(value).__name__} is not JSON-serializable")
+
+
+def register_builder(fn: Optional[Callable] = None, *, name: Optional[str] = None):
+    """Registers a model builder so that :func:`load` can rebuild its flows.
+
+    The decorated function must return an :class:`~torch.nn.Module`. Its call
+    arguments, with defaults filled in, are recorded on the result as
+    ``builder_config`` (``{"builder": name, "kwargs": {...}}``) if they are
+    JSON-serializable
+    (numbers, strings, ``None``, lists/tuples, dicts with string keys);
+    otherwise ``builder_config`` is ``None`` and the reason is kept in
+    ``builder_config_error``. When a registered builder calls another one
+    (e.g. ``VeriFlow`` calls ``USFlow``), the outermost call is recorded.
+
+    Can be used as ``@register_builder`` or ``@register_builder(name="MyFlow")``.
+    """
+
+    def decorate(f: Callable) -> Callable:
+        key = name or f.__name__
+        existing = _BUILDERS.get(key)
+        if existing is not None and _qualname(existing.__wrapped__) != _qualname(f):
+            raise ValueError(f"a different builder named {key!r} is already registered")
+        signature = inspect.signature(f)
+
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            model = f(*args, **kwargs)
+            bound = signature.bind(*args, **kwargs)
+            bound.apply_defaults()
+            arguments = dict(bound.arguments)
+            for p in signature.parameters.values():  # flatten **kwargs
+                if p.kind is inspect.Parameter.VAR_KEYWORD and p.name in arguments:
+                    arguments.update(arguments.pop(p.name))
+                elif p.kind is inspect.Parameter.VAR_POSITIONAL and p.name in arguments:
+                    raise TypeError(f"builder {key!r}: *{p.name} arguments cannot be recorded")
+            try:
+                config = {"builder": key, "kwargs": _to_json(arguments)}
+                error = None
+            except TypeError as e:
+                config, error = None, f"builder {key!r}: argument not JSON-serializable ({e})"
+            model.builder_config = config
+            model.builder_config_error = error
+            return model
+
+        _BUILDERS[key] = wrapper
+        return wrapper
+
+    return decorate(fn) if fn is not None else decorate
+
+
+def _qualname(f: Callable) -> str:
+    return f"{getattr(f, '__module__', '')}.{getattr(f, '__qualname__', repr(f))}"
+
+
+# --------------------------------------------------------------------------- save / load
+def _float_dtype(module: nn.Module) -> Optional[torch.dtype]:
+    for t in list(module.parameters()) + list(module.buffers()):
+        if t.is_floating_point():
+            return t.dtype
+    return None
+
+
+def save(flow: nn.Module, path: PathLike, metadata: Optional[dict] = None) -> Path:
+    """Saves the weights of ``flow`` together with its builder configuration.
+
+    Args:
+        flow: a flow (any :class:`~torch.nn.Module`). If it carries a
+            ``builder_config`` (built by a registered builder), :func:`load`
+            can rebuild it; otherwise a warning is issued and the file has to
+            be loaded with ``load(path, model=...)``.
+        path: output file.
+        metadata: optional JSON-serializable dict stored alongside (e.g.
+            training settings or metrics).
+
+    Returns:
+        The path written to.
+    """
+    path = Path(path)
+    config = getattr(flow, "builder_config", None)
+    if config is None:
+        reason = getattr(flow, "builder_config_error", None) or "the flow was not built by a registered builder"
+        warnings.warn(
+            f"saving without builder configuration ({reason}); load it with load(path, model=...)",
+            stacklevel=2,
+        )
+    try:
+        meta_json = json.dumps(_to_json(metadata or {}))
+    except TypeError as e:
+        raise TypeError(f"metadata must be JSON-serializable: {e}") from e
+    from cjd_flows import __version__
+
+    dtype = _float_dtype(flow)
+    payload = {
+        "format": _FORMAT,
+        "format_version": FORMAT_VERSION,
+        "library_version": __version__,
+        "config": json.dumps(config) if config is not None else "",
+        "dtype": str(dtype).replace("torch.", "") if dtype is not None else "",
+        "metadata": meta_json,
+        "state_dict": {k: v.detach().cpu() for k, v in flow.state_dict().items()},
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(payload, path)
+    return path
+
+
+def _read(path: PathLike) -> dict:
+    payload = torch.load(Path(path), map_location="cpu", weights_only=True)
+    if not isinstance(payload, dict) or payload.get("format") != _FORMAT:
+        raise ValueError(f"{path} is not a file written by cjd_flows.io.save")
+    if int(payload.get("format_version", -1)) > FORMAT_VERSION:
+        raise ValueError(
+            f"{path} uses file format {payload['format_version']}; this version of cjd-flows reads up to "
+            f"{FORMAT_VERSION}. Upgrade cjd-flows."
+        )
+    return payload
+
+
+def load_metadata(path: PathLike) -> dict:
+    """Returns the builder configuration, versions and user metadata of a saved file (no model is built)."""
+    payload = _read(path)
+    return {
+        "config": json.loads(payload["config"]) if payload["config"] else None,
+        "library_version": payload["library_version"],
+        "format_version": payload["format_version"],
+        "dtype": payload["dtype"] or None,
+        "metadata": json.loads(payload["metadata"]),
+    }
+
+
+def load(
+    path: PathLike,
+    model: Optional[nn.Module] = None,
+    map_location: Union[str, torch.device, None] = None,
+    strict: bool = True,
+) -> nn.Module:
+    """Loads a flow saved with :func:`save`.
+
+    Args:
+        path: file written by :func:`save`.
+        model: module to load the weights into. If ``None``, the flow is
+            rebuilt from the stored builder configuration.
+        map_location: device to move the flow to (default: CPU).
+        strict: passed to :meth:`~torch.nn.Module.load_state_dict`.
+
+    Returns:
+        The flow in eval mode, with the saved dtype (when rebuilt) and the
+        saved weights and buffers (including data-dependent initialization
+        flags such as :class:`~cjd_flows.bijections.Shift` ``initialized``).
+    """
+    payload = _read(path)
+    saved_version = str(payload["library_version"])
+    from cjd_flows import __version__
+
+    if saved_version.split(".")[0] != __version__.split(".")[0]:
+        warnings.warn(
+            f"{path} was saved with cjd-flows {saved_version}, this is {__version__}", stacklevel=2
+        )
+    if model is None:
+        if not payload["config"]:
+            raise ValueError(
+                f"{path} has no builder configuration; construct the model yourself and pass it as model=..."
+            )
+        config = json.loads(payload["config"])
+        import cjd_flows.models  # noqa: F401  (registers the built-in builders)
+
+        builder = _BUILDERS.get(config["builder"])
+        if builder is None:
+            raise ValueError(
+                f"unknown builder {config['builder']!r}; import the module that registers it before loading"
+            )
+        model = builder(**config["kwargs"])
+        if payload["dtype"]:
+            model = model.to(getattr(torch, payload["dtype"]))
+    model.load_state_dict(payload["state_dict"], strict=strict)
+    if map_location is not None:
+        model = model.to(map_location)
+    return model.eval()

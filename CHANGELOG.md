@@ -49,6 +49,11 @@ pyro-based API of 0.9 stays available as an optional extra.
 - **Evaluation suite** (`cjd_flows.evaluation`): `RadialFlowEvaluator`, moved
   from `cjd_flows.explib.eval` and extended to v1 flows with a radial or
   Gaussian base. Needs the `eval` extra, not pyro.
+- **Saving and loading** (`cjd_flows.io`, also `cjd_flows.save` / `cjd_flows.load`):
+  weights plus the JSON builder configuration (`USFlow`, `VeriFlow` or builders
+  registered with `register_builder`), dtype and library version in a file read
+  with `torch.load(..., weights_only=True)`; `load` rebuilds the flow, or loads
+  into a given `model`.
 - **Testing helpers** (`cjd_flows.testing`): `check_bijection`,
   `jacobian_log_abs_det` and `check_flow_normalization` for custom layers.
 - Benchmark scripts in `benchmarks/` (density suite and a CIFAR-10 study).
