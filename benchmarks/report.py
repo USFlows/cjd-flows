@@ -67,27 +67,30 @@ def density_section(runs: Path) -> str:
     if toy:
         out.append("## Toy 2-D densities (test NLL in nats, lower is better)\n")
         out.append("8 coupling blocks, MLP conditioners (2×128), 6000 steps, EMA. Rows: dataset / coupling; columns: base distribution.\n")
-        out.append(provenance(toy))
         recs = [r for r in toy if r["dataset"] != "asymmetric_gmm"]
         out.append(pivot(recs, lambda r: f"{r['dataset']} / {r['coupling']}", lambda r: r["base"], "test_nll"))
+        out.append("\n" + provenance(recs))
         kl = [r for r in recs if r.get("kl_estimate") is not None]
         if kl:
             out.append("\n\n### KL(p_data ‖ p_model) estimate (nats) on datasets with known density\n")
             out.append(pivot(kl, lambda r: f"{r['dataset']} / {r['coupling']}", lambda r: r["base"], "kl_estimate"))
+            out.append("\n" + provenance(kl))
         gmm = [r for r in toy if r["dataset"] == "asymmetric_gmm"]
         if gmm:
             out.append("\n\n## Asymmetric GMM of the USF paper (d = 2 … 128)\n")
             out.append("### KL estimate (nats)\n")
             out.append(pivot(gmm, lambda r: f"d={r['d']:>3} / {r['coupling']}", lambda r: r["base"], "kl_estimate", 3))
+            out.append("\n" + provenance(gmm))
             out.append("\n\n### Spearman correlation between −latent norm and true log-density (alignment; higher is better)\n")
             out.append(pivot(gmm, lambda r: f"d={r['d']:>3} / {r['coupling']}", lambda r: r["base"], "spearman_norm_vs_true", 3, lower_better=False))
+            out.append("\n" + provenance(gmm))
     tab = [r for r in load_jsonl(runs / "density" / "tabular" / "results.jsonl") if r.get("ok")]
     if tab:
         out.append("\n\n## MAF tabular suite (test log-likelihood in nats, higher is better)\n")
-        out.append(provenance(tab))
         for r in tab:
             r["test_ll"] = -r["test_nll"]
         out.append(pivot(tab, lambda r: f"{r['dataset']} / {r['coupling']}", lambda r: r["base"], "test_ll", 2, lower_better=False))
+        out.append("\n" + provenance(tab))
         out.append(
             "\n\nReference (test LL, nats): RealNVP power −0.17, gas 8.33, hepmass −18.71, miniboone −13.55, bsds300 153.28; "
             "Glow 0.17 / 8.15 / −18.92 / −11.35 / 155.07; MAF 0.24 / 10.08 / −17.70 / −11.75 / 155.69; "
@@ -116,6 +119,8 @@ def cifar_section(runs: Path) -> str:
                 epoch=evals[-1]["epoch"] if evals else None,
                 final=final["final_test_bpd"] if final else None,
                 minutes=final["minutes"] if final else None,
+                seed=args.get("seed"),
+                meta=final.get("meta") if final else None,
             )
         )
     if not rows:
@@ -131,6 +136,7 @@ def cifar_section(runs: Path) -> str:
             f"{r['epoch'] if r['epoch'] is None else round(r['epoch'], 1)} | "
             f"{r['minutes'] if r['minutes'] is None else round(r['minutes'], 1)} |"
         )
+    out.append("\n" + provenance(rows))
     out.append("\nReference CIFAR-10 bpd: NICE ≈4.48, RealNVP 3.49, Glow 3.35, Flow++ 3.08, Jet (ImageNet-21k pretraining) 3.02.")
     return "\n".join(out)
 
