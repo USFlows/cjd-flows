@@ -3,6 +3,9 @@
 Runs a grid of (dataset x base x coupling x seed) configurations in a process
 pool and appends one JSON record per run to ``<out>/results.jsonl``.
 
+Suites: ``toy`` (bases x couplings), ``arch`` (couplings x mixing layers, incl. the
+affine reference without constant determinant), ``tabular``, ``smoke``.
+
 Usage::
 
     PYTHONPATH=src:. python benchmarks/density/run.py --suite toy --workers 8
@@ -25,12 +28,27 @@ os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
 os.environ.setdefault("HIP_VISIBLE_DEVICES", "")
 
 
-def spearman(a, b) -> float:
+def _average_ranks(a):
+    """Ranks with ties replaced by their average rank (as in scipy.stats.rankdata)."""
+    import torch
 
-    ra = a.argsort().argsort().double()
-    rb = b.argsort().argsort().double()
+    values, order = a.sort()
+    _, inverse, counts = torch.unique_consecutive(values, return_inverse=True, return_counts=True)
+    ends = counts.cumsum(0)
+    average = (ends - counts + ends - 1).double() / 2
+    ranks = torch.empty(a.shape, dtype=torch.float64)
+    ranks[order] = average[inverse]
+    return ranks
+
+
+def spearman(a, b):
+    """Spearman rank correlation with tie handling; ``None`` if either input is constant (undefined)."""
+    ra, rb = _average_ranks(a), _average_ranks(b)
     ra, rb = ra - ra.mean(), rb - rb.mean()
-    return float((ra * rb).sum() / (ra.norm() * rb.norm()))
+    denom = ra.norm() * rb.norm()
+    if float(denom) == 0.0:
+        return None
+    return float((ra * rb).sum() / denom)
 
 
 def load_data(spec):
@@ -61,12 +79,27 @@ def load_data(spec):
     return tr, va, te, None
 
 
+def build_model(spec, D):
+    """USFlow variants or the affine reference (no constant determinant) for ``spec``."""
+    common = dict(blocks=spec["blocks"], hidden=tuple(spec["hidden"]), mixing=spec.get("mixing", "lu"),
+                  base=spec["base"], p=spec.get("p", 2.0), n_components=spec.get("n_components", 4))
+    coupling = spec["coupling"]
+    if coupling == "affine":
+        from benchmarks.baselines import affine_reference_flow
+
+        return affine_reference_flow((D,), **common)
+    from cjd_flows.models import USFlow
+
+    if coupling == "masked":  # VeriFlow-style: masked additive couplings in adjoint blocks, ReLU
+        return USFlow((D,), coupling="additive", masked=True, conjugate=True, activation="relu", **common)
+    return USFlow((D,), coupling=coupling, **common)
+
+
 def run_one(spec, meta=None) -> dict:
     import torch
 
     torch.set_num_threads(spec.get("threads", 4))
     from benchmarks.common import count_parameters, run_metadata
-    from cjd_flows.models import USFlow
     from cjd_flows.train import evaluate_nll, fit
 
     rec = dict(spec)
@@ -77,16 +110,7 @@ def run_one(spec, meta=None) -> dict:
         tr, va, te, exact = load_data(spec)
         D = tr.shape[1]
         torch.manual_seed(spec["seed"])
-        flow = USFlow(
-            (D,),
-            blocks=spec["blocks"],
-            coupling=spec["coupling"],
-            hidden=tuple(spec["hidden"]),
-            mixing=spec.get("mixing", "lu"),
-            base=spec["base"],
-            p=spec.get("p", 2.0),
-            n_components=spec.get("n_components", 4),
-        )
+        flow = build_model(spec, D)
         rec["params"] = count_parameters(flow)
         steps = spec["steps"]
         bs = spec.get("batch_size", 512)
@@ -113,7 +137,7 @@ def run_one(spec, meta=None) -> dict:
                 rec["true_test_nll"] = float(-lp.mean())
                 rec["spearman_norm_vs_true"] = spearman(-r.double(), lp)
                 rec["spearman_model_vs_true"] = spearman(lq, lp)
-            rec["log_abs_det"] = float(flow.log_abs_det())
+            rec["log_abs_det"] = None if spec["coupling"] == "affine" else float(flow.log_abs_det())
         rec["minutes"] = (time.time() - t0) / 60
         rec["ok"] = True
     except Exception as e:  # record failures instead of crashing the pool
@@ -141,6 +165,27 @@ def toy_grid(seeds):
     return specs
 
 
+ARCH_COUPLINGS = ["additive", "masked", "gin", "autoregressive", "affine"]
+ARCH_MIXINGS = ["lu", "orthogonal", "householder", "permutation"]
+
+
+def arch_grid(seeds):
+    """Architecture comparison: coupling x mixing for a Gaussian and a monotone radial base."""
+    specs = []
+    data = [("two_moons", None), ("eight_gaussians", None), ("checkerboard", None), ("rings", None),
+            ("asymmetric_gmm", 8), ("asymmetric_gmm", 32)]
+    for (ds, d), coup, mix, base, seed in itertools.product(
+        data, ARCH_COUPLINGS, ARCH_MIXINGS, ["gaussian", "ggmix-monotone"], seeds
+    ):
+        spec = dict(dataset=ds, base=base, coupling=coup, mixing=mix, seed=seed, blocks=8, steps=6000, threads=2)
+        if d is None:
+            spec["hidden"] = [128, 128]
+        else:
+            spec.update(d=d, hidden=[max(128, 4 * d)] * 2)
+        specs.append(spec)
+    return specs
+
+
 def tabular_grid(seeds):
     cfg = {
         "power": dict(blocks=10, hidden=[256, 256], steps=40_000),
@@ -159,7 +204,7 @@ def tabular_grid(seeds):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--suite", choices=["toy", "tabular", "smoke"], default="toy")
+    ap.add_argument("--suite", choices=["toy", "arch", "tabular", "smoke"], default="toy")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--seeds", type=int, nargs="+", default=[0])
     ap.add_argument("--out", default="benchmarks/runs/density")
@@ -172,11 +217,14 @@ def main():
 
     if args.suite == "toy":
         specs = toy_grid(args.seeds)
+    elif args.suite == "arch":
+        specs = arch_grid(args.seeds)
     elif args.suite == "tabular":
         specs = tabular_grid(args.seeds)
     else:
-        specs = [dict(dataset="two_moons", base=b, coupling=c, seed=0, blocks=4, hidden=[32, 32], steps=200, threads=2)
-                 for b in ("gaussian", "ggmix") for c in ("additive", "gin")]
+        specs = [dict(dataset="two_moons", base=b, coupling=c, mixing="lu", seed=0, blocks=4, hidden=[32, 32],
+                      steps=200, threads=2)
+                 for b in ("gaussian", "ggmix") for c in ARCH_COUPLINGS]
     if args.filter:
         specs = [s for s in specs if args.filter in s["dataset"]]
     if args.bases:
@@ -190,14 +238,20 @@ def main():
             s["threads"] = args.threads
     out = Path(args.out) / args.suite
     out.mkdir(parents=True, exist_ok=True)
+    # resume: compare on the union of all spec keys (specs differ, e.g. only GMM specs have ``d``)
+    keys = sorted({k for s in specs for k in s})
+
+    def resume_key(d):
+        return json.dumps({k: d.get(k) for k in keys}, sort_keys=True)
+
     done = set()
     res_file = out / "results.jsonl"
     if res_file.exists():
         for line in res_file.read_text().splitlines():
             r = json.loads(line)
             if r.get("ok"):
-                done.add(json.dumps({k: r[k] for k in specs[0] if k in r}, sort_keys=True))
-    specs = [s for s in specs if json.dumps(s, sort_keys=True) not in done]
+                done.add(resume_key(r))
+    specs = [s for s in specs if resume_key(s) not in done]
     print(f"{len(specs)} runs to do", flush=True)
 
     import multiprocessing as mp
