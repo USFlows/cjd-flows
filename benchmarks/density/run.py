@@ -64,10 +64,12 @@ def run_one(spec) -> dict:
     import torch
 
     torch.set_num_threads(spec.get("threads", 4))
+    from benchmarks.common import count_parameters, run_metadata
     from cjd_flows.models import USFlow
     from cjd_flows.train import evaluate_nll, fit
 
     rec = dict(spec)
+    rec["meta"] = run_metadata("cpu")
     try:
         t0 = time.time()
         tr, va, te, exact = load_data(spec)
@@ -83,7 +85,7 @@ def run_one(spec) -> dict:
             p=spec.get("p", 2.0),
             n_components=spec.get("n_components", 4),
         )
-        rec["params"] = sum(p.numel() for p in flow.parameters())
+        rec["params"] = count_parameters(flow)
         steps = spec["steps"]
         bs = spec.get("batch_size", 512)
         epochs = max(1, math.ceil(steps * bs / len(tr)))

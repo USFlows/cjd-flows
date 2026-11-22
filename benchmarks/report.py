@@ -29,6 +29,17 @@ def fmt(vals, digits=3):
     return f"{mean(vals):.{digits}f} ± {stdev(vals):.{digits}f}"
 
 
+def provenance(records) -> str:
+    """One line stating which library versions, commits and devices produced ``records``."""
+    metas = [r.get("meta") or {} for r in records]
+    versions = sorted({m.get("library_version", "unknown") for m in metas})
+    commits = sorted({(m.get("git_commit") or "unknown")[:7] + ("+dirty" if m.get("git_dirty") else "") for m in metas})
+    devices = sorted({m.get("device", "unknown") for m in metas})
+    seeds = sorted({r.get("seed") for r in records if r.get("seed") is not None})
+    return (f"*{len(records)} runs; cjd-flows {', '.join(versions)}; commit {', '.join(commits)}; "
+            f"device {', '.join(devices)}; seeds {seeds}.*\n")
+
+
 def pivot(records, row_key, col_key, val_key, digits=3, lower_better=True):
     rows = sorted({row_key(r) for r in records}, key=str)
     cols = sorted({col_key(r) for r in records}, key=str)
@@ -56,6 +67,7 @@ def density_section(runs: Path) -> str:
     if toy:
         out.append("## Toy 2-D densities (test NLL in nats, lower is better)\n")
         out.append("8 coupling blocks, MLP conditioners (2×128), 6000 steps, EMA. Rows: dataset / coupling; columns: base distribution.\n")
+        out.append(provenance(toy))
         recs = [r for r in toy if r["dataset"] != "asymmetric_gmm"]
         out.append(pivot(recs, lambda r: f"{r['dataset']} / {r['coupling']}", lambda r: r["base"], "test_nll"))
         kl = [r for r in recs if r.get("kl_estimate") is not None]
@@ -72,6 +84,7 @@ def density_section(runs: Path) -> str:
     tab = [r for r in load_jsonl(runs / "density" / "tabular" / "results.jsonl") if r.get("ok")]
     if tab:
         out.append("\n\n## MAF tabular suite (test log-likelihood in nats, higher is better)\n")
+        out.append(provenance(tab))
         for r in tab:
             r["test_ll"] = -r["test_nll"]
         out.append(pivot(tab, lambda r: f"{r['dataset']} / {r['coupling']}", lambda r: r["base"], "test_ll", 2, lower_better=False))
