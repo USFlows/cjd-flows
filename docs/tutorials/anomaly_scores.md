@@ -12,7 +12,7 @@ scores (higher = more anomalous) batch-wise:
 |---|---|---|
 | `nll` | $-\log p(x)$ | any base |
 | `latent_norm` | $\lVert f(x) - \mathrm{loc} \rVert_p$ | any base |
-| `typicality` | $-\log p_R(\lVert z \rVert)$ | radial base (or a fitted {class}`~cjd_flows.scores.TypicalityScorer`) |
+| `typicality` | $-\log p_R(\lVert z \rVert)$ | radial base; for other bases a {class}`~cjd_flows.scores.TypicalityScorer` fitted on reference data gives $\lvert \mathrm{nll}(x) - \overline{\mathrm{nll}}_{\mathrm{ref}} \rvert$ |
 | `hdr` | radius CDF $F_R(\lVert z \rVert)$; for radially decreasing profiles this is the mass of the latent region more likely than $z$ (HDR p-value $= 1 -$ `hdr`) | radial base with a CDF |
 
 ```python
