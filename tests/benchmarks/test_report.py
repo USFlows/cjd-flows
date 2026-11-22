@@ -1,6 +1,12 @@
 import json
+import sys
+from pathlib import Path
 
-from benchmarks.report import arch_section, images_section, load_jsonl
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+report = pytest.importorskip("benchmarks.report")  # repository-only (not in the sdist)
+arch_section, images_section, load_jsonl = report.arch_section, report.images_section, report.load_jsonl
 
 META = {"library_version": "1.0.0", "git_commit": "abcdef0123", "git_dirty": False, "device": "cpu"}
 
@@ -34,17 +40,17 @@ def test_images_section(tmp_path):
     _write(runs / "images" / "density" / "results_shard0.jsonl", dens)
     md = images_section(runs)
     assert "## MNIST / Fashion-MNIST density" in md
-    assert "| mnist / gin | **1.550 ± 0.071** |" in md
+    assert "| mnist, 20 ep / gin | **1.550 ± 0.071** |" in md
     assert "last epoch in 0 of 2 runs." in md
     assert "### Score: nll" in md and "### Score: latent_norm" in md
     # mean over the three classes 0.80, 0.81, 0.82
-    assert "| mnist / additive | **0.810 ± 0.010** |" in md
-    assert "| mnist / 2 | **0.820** | **0.820** |" in md  # per-class table, ties are both bold
-    assert "last epoch in 6 of 6 runs (the validation NLL was still improving" in md
+    assert "| mnist, 20 ep / additive | **0.810 ± 0.010** |" in md
+    assert "| mnist, 20 ep / 2 | **0.820** | **0.820** |" in md  # per-class table, ties are both bold
+    assert "last epoch in 6 of 6 runs (possible sign that the budget is too short" in md
     assert "Incomplete sweep" not in md
     assert images_section(tmp_path / "empty") == ""
     _write(runs / "images" / "oneclass" / "results_shard2.jsonl", [_oneclass("mnist", 3, "gin", "gaussian", 0.9)])
-    assert "on mnist the cells average over different sets of classes" in images_section(runs)
+    assert "on mnist, 20 ep the cells average over different sets of classes" in images_section(runs)
     # equal counts but different classes are flagged as well: additive {1, 2, 3}, gin {0, 1, 2}
     _write(runs / "images" / "oneclass" / "results_shard2.jsonl", [_oneclass("mnist", 3, "additive", "gaussian", 0.9)])
     _write(runs / "images" / "oneclass" / "results_shard0.jsonl", oc[1:3])  # drops (class 0, additive)
@@ -57,7 +63,7 @@ def test_images_normal_bpd_is_averaged_per_class(tmp_path):
             dict(_oneclass("mnist", 1, "gin", "gaussian", 0.9), seed=0, normal_test_bpd=5.0)]
     _write(tmp_path / "images" / "oneclass" / "results_shard0.jsonl", recs)
     md = images_section(tmp_path)
-    assert "| mnist / gin | **3.500 ± 2.121** |" in md  # classes 2.0 and 5.0, not runs 1, 3, 5
+    assert "| mnist, 20 ep / gin | **3.500 ± 2.121** |" in md  # classes 2.0 and 5.0, not runs 1, 3, 5
 
 
 def test_arch_alignment_tables(tmp_path):
@@ -69,3 +75,16 @@ def test_arch_alignment_tables(tmp_path):
     assert "between −latent norm and true log-density" in md
     assert "between model log-density and true log-density" in md
     assert "| gmm d=8 / affine | **0.800 ± 0.000** |" in md
+
+
+def test_images_budgets_are_not_pooled(tmp_path):
+    recs = [_oneclass("mnist", 0, "gin", "gaussian", 0.8), dict(_oneclass("mnist", 0, "gin", "gaussian", 0.9), epochs=100)]
+    _write(tmp_path / "images" / "oneclass" / "results_shard0.jsonl", recs)
+    md = images_section(tmp_path)
+    assert "| mnist, 20 ep / gin | **0.800** |" in md and "| mnist, 100 ep / gin | **0.900** |" in md
+
+
+def test_last_epoch_note_ignores_single_epoch_runs(tmp_path):
+    _write(tmp_path / "images" / "oneclass" / "results_shard0.jsonl",
+           [dict(_oneclass("mnist", 0, "gin", "gaussian", 0.8), epochs=1, best_epoch=1)])
+    assert "Selected checkpoint" not in images_section(tmp_path)

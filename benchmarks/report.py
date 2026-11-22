@@ -149,78 +149,89 @@ def _images_records(runs: Path, task: str):
 
 
 def _last_epoch_note(recs, total_key="epochs") -> str:
-    """How many runs selected their last epoch (records without the information are left out)."""
-    known = [r for r in recs if r.get("best_epoch") is not None and r.get(total_key) is not None]
+    """How many runs selected their last epoch (records without the information, or with a single
+    epoch, are left out). A last-epoch minimum suggests, but does not prove, that the validation NLL
+    was still improving; the recorded validation curves (``val_curve``) show by how much."""
+    known = [r for r in recs if r.get("best_epoch") is not None and (r.get(total_key) or 0) > 1]
     if not known:
         return ""
     n_last = sum(r["best_epoch"] == r[total_key] for r in known)
     note = f"Selected checkpoint at the last epoch in {n_last} of {len(known)} runs"
     if n_last > len(known) / 2:
-        note += " (the validation NLL was still improving: the epoch budget is too short for convergence)"
+        note += " (possible sign that the budget is too short for convergence; see the validation curves)"
     return note + ".\n"
 
 
 def images_section(runs: Path) -> str:
-    """MNIST / Fashion-MNIST (images/run.py): density in bits/dim and one-class anomaly detection."""
+    """MNIST / Fashion-MNIST (images/run.py): density in bits/dim and one-class anomaly detection.
+
+    Results are grouped by dataset *and* epoch budget, so reruns with a different ``--epochs`` are
+    never pooled.
+    """
     out = []
 
+    def cfg(r):
+        return f"{r['dataset']}, {r['epochs']} ep"
+
     def row(r):
-        return f"{r['dataset']} / {r['coupling']}"
+        return f"{r['cfg']} / {r['coupling']}"
 
     dens = _images_records(runs, "density")
     if dens:
+        for r in dens:
+            r["cfg"] = cfg(r)
         out.append("\n\n## MNIST / Fashion-MNIST density (test bits/dim, lower is better)\n")
         out.append("8 blocks, ConvNet conditioners (hidden 128, 128), fixed epoch budget, EMA, checkpoint "
-                   "selection on a validation split carved out of the training set. Rows: dataset / coupling; "
-                   "columns: base distribution; mean ± std over seeds.\n")
+                   "selection on a validation split carved out of the training set. Rows: dataset, epoch "
+                   "budget / coupling; columns: base distribution; mean ± std over seeds.\n")
         out.append(pivot(dens, row, lambda r: r["base"], "test_bpd"))
         out.append("\n" + _last_epoch_note(dens))
         out.append(provenance(dens))
     oc = _images_records(runs, "oneclass")
     if oc:
-        # average over seeds per (dataset, class, coupling, base) first, so that the spread is over classes
+        # average over seeds per (dataset + budget, class, coupling, base) first, so that the spread is over classes
         per_class = defaultdict(list)
         for r in oc:
-            per_class[(r["dataset"], r["cls"], r["coupling"], r["base"])].append(r)
+            per_class[(cfg(r), r["cls"], r["coupling"], r["base"])].append(r)
         scores = sorted({s for r in oc for s in r["metrics"]})
         out.append("\n\n## One-class anomaly detection on MNIST / Fashion-MNIST (test AUROC, higher is better)\n")
         out.append("One model per class (that class = normal, all other test classes = anomalous); same models "
-                   "and protocol as the density table. Mean ± std over the classes (each class averaged over "
-                   "its seeds first). Scores: `nll` = −log p(x); `latent_norm` = ‖z‖; `hdr` = P(‖Z‖ ≤ ‖z‖) "
-                   "under the base; `typicality` = −log of the base's norm density at ‖z‖. For the "
-                   "Gaussian base `hdr` saturates numerically in high dimensions (issue #107), so its AUROC "
-                   "there is not meaningful.\n")
+                   "and protocol as the density table. Rows: dataset, epoch budget / coupling. Mean ± std over "
+                   "the classes (each class averaged over its seeds first). Scores: `nll` = −log p(x); "
+                   "`latent_norm` = ‖z‖; `hdr` = P(‖Z‖ ≤ ‖z‖) under the base; `typicality` = −log of the "
+                   "base's norm density at ‖z‖. For the Gaussian base `hdr` saturates numerically in high "
+                   "dimensions (issue #107), so its AUROC there is not meaningful.\n")
         for score in scores:
             cells = []
-            for (ds, _cls, coupling, base), rs in per_class.items():
+            for (c, _cls, coupling, base), rs in per_class.items():
                 vals = [r["metrics"][score]["auroc"] for r in rs if score in r["metrics"]]
                 if vals:
-                    cells.append(dict(dataset=ds, coupling=coupling, base=base, auroc=mean(vals)))
+                    cells.append(dict(cfg=c, coupling=coupling, base=base, auroc=mean(vals)))
             if cells:
-                out.append(f"\n### Score: {score} (rows: dataset / coupling; columns: base)\n")
+                out.append(f"\n### Score: {score} (rows: dataset, epoch budget / coupling; columns: base)\n")
                 out.append(pivot(cells, row, lambda r: r["base"], "auroc", 3, lower_better=False))
                 out.append("\n")
-        class_sets = defaultdict(set)  # (dataset, coupling, base) -> evaluated classes
-        for ds, cls, coupling, base in per_class:
-            class_sets[(ds, coupling, base)].add(cls)
-        differing = sorted({ds for ds, _, _ in class_sets
-                            if len({frozenset(v) for k, v in class_sets.items() if k[0] == ds}) > 1})
+        class_sets = defaultdict(set)  # (dataset + budget, coupling, base) -> evaluated classes
+        for c, cls, coupling, base in per_class:
+            class_sets[(c, coupling, base)].add(cls)
+        differing = sorted({c for c, _, _ in class_sets
+                            if len({frozenset(v) for k, v in class_sets.items() if k[0] == c}) > 1})
         if differing:
-            out.append(f"\n**Incomplete sweep:** on {', '.join(differing)} the cells average over different "
+            out.append(f"\n**Incomplete sweep:** on {'; '.join(differing)} the cells average over different "
                        "sets of classes, so they are not yet comparable.\n")
         main_score = "nll" if "nll" in scores else scores[0]
         out.append(f"\n### Per-class AUROC, score {main_score} (mean over seeds)\n")
         cells = []
-        for (ds, cls, coupling, base), rs in per_class.items():
+        for (c, cls, coupling, base), rs in per_class.items():
             vals = [r["metrics"][main_score]["auroc"] for r in rs if main_score in r["metrics"]]
             if vals:
-                cells.append(dict(dataset=ds, cls=cls, model=f"{coupling} / {base}", auroc=mean(vals)))
-        out.append(pivot(cells, lambda r: f"{r['dataset']} / {r['cls']}", lambda r: r["model"], "auroc", 3,
+                cells.append(dict(cfg=c, cls=cls, model=f"{coupling} / {base}", auroc=mean(vals)))
+        out.append(pivot(cells, lambda r: f"{r['cfg']} / {r['cls']}", lambda r: r["model"], "auroc", 3,
                          lower_better=False))
         out.append("\n\nNormal-class test bits/dim (mean ± std over classes, each class averaged over its seeds "
                    "first):\n")
-        cells = [dict(dataset=ds, coupling=coupling, base=base, bpd=mean(r["normal_test_bpd"] for r in rs))
-                 for (ds, _cls, coupling, base), rs in per_class.items()]
+        cells = [dict(cfg=c, coupling=coupling, base=base, bpd=mean(r["normal_test_bpd"] for r in rs))
+                 for (c, _cls, coupling, base), rs in per_class.items()]
         out.append(pivot(cells, row, lambda r: r["base"], "bpd"))
         out.append("\n" + _last_epoch_note(oc))
         out.append(provenance(oc))
