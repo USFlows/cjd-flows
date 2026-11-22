@@ -186,18 +186,24 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     (out / "args.json").write_text(json.dumps(vars(args), indent=2))
 
-    from torch.utils.tensorboard import SummaryWriter
+    # TensorBoard is optional: metrics.jsonl and the PNG grids are the primary outputs
+    try:
+        from torch.utils.tensorboard import SummaryWriter
 
-    tb = SummaryWriter(str(out))
+        tb = SummaryWriter(str(out))
+    except ImportError:
+        print(f"[{name}] tensorboard not installed: logging to metrics.jsonl only", flush=True)
+        tb = None
     log_f = open(out / "metrics.jsonl", "a")
 
     def log(step, **kw):
         rec = {"step": step, "time": time.time(), **kw}
         log_f.write(json.dumps(rec) + "\n")
         log_f.flush()
-        for k, v in kw.items():
-            if isinstance(v, (int, float)):
-                tb.add_scalar(k, v, step)
+        if tb is not None:
+            for k, v in kw.items():
+                if isinstance(v, (int, float)):
+                    tb.add_scalar(k, v, step)
 
     xtr, _ = load_cifar("train")
     xte, _ = load_cifar("test")
@@ -305,7 +311,8 @@ def main():
                     xs = sample_grid(model, 64, T, device, amp_dtype)
                     if args.noise > 0:
                         xs = tweedie(model, xs, args.noise, amp_dtype)
-                    tb.add_images(f"samples/T{T}", to_img(xs), step)
+                    if tb is not None:
+                        tb.add_images(f"samples/T{T}", to_img(xs), step)
                     save_grid(xs, out / f"samples_T{T}_step{step}.png")
                 log(step, **rec)
                 print(f"[{name}] step {step}/{total} ep {step/steps_per_epoch:.1f} test_bpd {tbpd:.4f} "
