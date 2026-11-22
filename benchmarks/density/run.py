@@ -125,6 +125,9 @@ def run_one(spec, meta=None) -> dict:
         rec["test_nll"] = float(evaluate_nll(flow, te, batch_size=8192, device="cpu"))
         rec["best_val_nll"] = float(res.best_val_loss) if res.best_val_loss is not None else None
         rec["steps_done"] = res.steps
+        # convergence check: best epoch vs epochs run, and the validation curve
+        rec["best_epoch"], rec["epochs_run"] = res.best_epoch, res.epochs
+        rec["val_curve"] = [float(v) for v in res.val_losses]
         rec["aborted"] = bool(res.aborted)
         with torch.no_grad():
             x = te[:20_000]

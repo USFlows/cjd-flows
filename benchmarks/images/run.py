@@ -147,7 +147,8 @@ def run_one(spec, meta) -> dict:
                   verbose=False, seed=spec["seed"])
         flow.eval()
         rec.update(best_epoch=res.best_epoch, restored=res.restored, steps_done=res.steps,
-                   best_val_nll=float(res.best_val_loss) if res.best_val_loss is not None else None)
+                   best_val_nll=float(res.best_val_loss) if res.best_val_loss is not None else None,
+                   val_curve=[float(v) for v in res.val_losses])
         if res.aborted:
             raise RuntimeError(f"training aborted after {res.steps} steps (non-finite losses)")
         ref = test_a.dataset if hasattr(test_a, "dataset") else test_a
