@@ -108,3 +108,26 @@ def test_onnx_dynamo_path(tmp_path):
     except Exception as e:  # pragma: no cover - exporter environment specific
         pytest.skip(f"dynamo exporter unavailable: {e}")
     assert verify_onnx(flow, path, torch.randn(3, 4)) < 1e-4
+
+
+@pytest.mark.parametrize("mode", ["log_prob", "forward", "inverse", "sample"])
+def test_onnx_transformer_autoregressive(tmp_path, mode):
+    # QK-RMSNorm needs the dynamo exporter (to_onnx falls back to it)
+    pytest.importorskip("onnxscript")
+    pytest.importorskip("onnxruntime")
+    from cjd_flows.bijections import TransformerAutoregressive
+
+    torch.manual_seed(0)
+    tok = (4, 3)
+    flow = Flow(
+        [
+            TransformerAutoregressive(tok, embed_dim=16, depth=2, num_heads=2),
+            TransformerAutoregressive(tok, embed_dim=16, depth=1, num_heads=2, reverse=True, scale=True),
+        ],
+        StandardNormal(tok),
+    )
+    with torch.no_grad():
+        for p in flow.parameters():
+            p.add_(torch.randn_like(p) * 0.2)
+    path = to_onnx(flow, tmp_path / f"tar_{mode}.onnx", mode=mode, batch_size=2)
+    assert verify_onnx(flow, path, torch.randn(5, *tok)) < 1e-4

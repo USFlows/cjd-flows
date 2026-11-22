@@ -677,6 +677,25 @@ class _SelfAttention(nn.Module):
         out = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
         return self.proj(out.transpose(1, 2).reshape(B, T, D))
 
+    def step_static(self, x: Tensor, k_buf: Tensor, v_buf: Tensor, pos: Tensor) -> Tensor:
+        """Single-token causal attention with preallocated key/value buffers.
+
+        ``x`` is ``(B, 1, D)``, ``k_buf``/``v_buf`` are zero-initialized
+        ``(B, num_heads, L, head_dim)`` buffers and ``pos`` is a long tensor of
+        shape ``(1,)`` with the position of ``x``. The new key/value are written
+        into the buffers in place and the query attends to positions ``<= pos``.
+        All shapes are fixed, so a decoding loop can be compiled or captured as
+        a CUDA graph. In-place writes: use without autograd only.
+        """
+        B, _, D = x.shape
+        q, k, v = self.qkv(x).reshape(B, 1, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4).unbind(0)
+        q, k = self.q_norm(q), self.k_norm(k)
+        k_buf.index_copy_(2, pos, k.to(k_buf.dtype))
+        v_buf.index_copy_(2, pos, v.to(v_buf.dtype))
+        mask = (torch.arange(k_buf.shape[2], device=x.device) <= pos).view(1, 1, 1, -1)
+        out = F.scaled_dot_product_attention(q, k_buf.to(q.dtype), v_buf.to(q.dtype), attn_mask=mask)
+        return self.proj(out.transpose(1, 2).reshape(B, 1, D))
+
 
 class _JetBlock(nn.Module):
     """Pre-LN ViT block with adaLN-zero modulation (gates start closed -> identity)."""
@@ -700,6 +719,16 @@ class _JetBlock(nn.Module):
         """Incremental version of :meth:`forward` for causal blocks (see :meth:`_SelfAttention.step`)."""
         s1, sc1, g1, s2, sc2, g2 = self.ada(c).unsqueeze(1).chunk(6, dim=-1)
         x = x + g1 * self.attn.step(self.norm1(x) * (1 + sc1) + s1, cache)
+        return x + g2 * self.mlp(self.norm2(x) * (1 + sc2) + s2)
+
+    def modulation(self, c: Tensor) -> Tuple[Tensor, ...]:
+        """The six adaLN modulation tensors for context embedding ``c`` (each ``(B, 1, dim)``)."""
+        return self.ada(c).unsqueeze(1).chunk(6, dim=-1)
+
+    def step_static(self, x: Tensor, mod: Tuple[Tensor, ...], k_buf: Tensor, v_buf: Tensor, pos: Tensor) -> Tensor:
+        """Single-token step with precomputed modulation (see :meth:`_SelfAttention.step_static`)."""
+        s1, sc1, g1, s2, sc2, g2 = mod
+        x = x + g1 * self.attn.step_static(self.norm1(x) * (1 + sc1) + s1, k_buf, v_buf, pos)
         return x + g2 * self.mlp(self.norm2(x) * (1 + sc2) + s2)
 
 

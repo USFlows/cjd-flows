@@ -206,7 +206,10 @@ class TransformerAutoregressive(VolumePreserving):
     ``forward`` (data -> latent) is one parallel pass. ``inverse`` decodes the
     tokens one by one and reuses the attention keys/values of earlier tokens,
     so it costs about one parallel pass of compute spread over ``N``
-    sequential steps.
+    sequential steps. Without autograd (``torch.no_grad``, ``inference_mode``,
+    ONNX export) the keys/values go into preallocated buffers and every step
+    has fixed shapes; with autograd (e.g. ``rsample``) the cache grows by
+    concatenation so that gradients flow through the inverse.
 
     Alternate ``reverse`` between stacked layers so that every token is
     conditioned on every other one in some layer.
@@ -327,19 +330,51 @@ class TransformerAutoregressive(VolumePreserving):
     def inverse(self, z: Tensor, context: Optional[Tensor] = None) -> Tensor:
         if self.reverse:
             z = z.flip(1)
-        B, N = z.shape[0], self.num_tokens
-        c = self._embed_context(context, B, z)
+        c = self._embed_context(context, z.shape[0], z)
+        if torch.is_grad_enabled():
+            x = self._decode_autograd(z, c)
+        else:
+            x = self._decode_static(z, c)
+        return x.flip(1) if self.reverse else x
+
+    def _invert_token(self, z_i: Tensor, params: Tensor) -> Tensor:
+        t, s = self._scale_shift(params)
+        return (z_i - t if s is None else (z_i - t) * (-s).exp()).to(z_i.dtype)
+
+    def _decode_autograd(self, z: Tensor, c: Tensor) -> Tensor:
+        """Token-by-token decoding with a growing key/value cache (differentiable)."""
         caches = [dict() for _ in self.blocks]
-        h = self.start.expand(B, -1, -1).to(z.dtype)
+        h = self.start.expand(z.shape[0], -1, -1).to(z.dtype)
         xs = []
-        for i in range(N):
+        for i in range(self.num_tokens):
             h = h + self.pos_embed[:, i : i + 1].to(h.dtype)
             for block, cache in zip(self.blocks, caches):
                 h = block.step(h, c, cache)
-            t, s = self._scale_shift(self.head(self.norm_out(h))[:, 0])
-            x_i = (z[:, i] - t if s is None else (z[:, i] - t) * (-s).exp()).to(z.dtype)
-            xs.append(x_i)
-            if i + 1 < N:
-                h = self.inp(x_i).unsqueeze(1)
-        x = torch.stack(xs, dim=1)
-        return x.flip(1) if self.reverse else x
+            xs.append(self._invert_token(z[:, i], self.head(self.norm_out(h))[:, 0]))
+            if i + 1 < self.num_tokens:
+                h = self.inp(xs[-1]).unsqueeze(1)
+        return torch.stack(xs, dim=1)
+
+    def _decode_step(self, h: Tensor, pos: Tensor, mods, bufs) -> Tensor:
+        """Shift/scale parameters of token ``pos`` from its input embedding ``h`` (fixed shapes)."""
+        h = h + self.pos_embed.index_select(1, pos).to(h.dtype)
+        for block, mod, (k_buf, v_buf) in zip(self.blocks, mods, bufs):
+            h = block.step_static(h, mod, k_buf, v_buf, pos)
+        return self.head(self.norm_out(h))[:, 0]
+
+    def _decode_static(self, z: Tensor, c: Tensor) -> Tensor:
+        """Token-by-token decoding with preallocated key/value buffers (no autograd)."""
+        B, N = z.shape[0], self.num_tokens
+        mods = [block.modulation(c) for block in self.blocks]
+        attn = self.blocks[0].attn if len(self.blocks) else None
+        dt = mods[0][0].dtype if mods else z.dtype
+        bufs = [
+            tuple(z.new_zeros(B, attn.num_heads, N, attn.head_dim, dtype=dt) for _ in range(2)) for _ in self.blocks
+        ]
+        x = torch.empty_like(z)
+        h = self.start.expand(B, -1, -1).to(z.dtype)
+        for i in range(N):
+            pos = torch.full((1,), i, dtype=torch.long, device=z.device)
+            x[:, i] = self._invert_token(z[:, i], self._decode_step(h, pos, mods, bufs))
+            h = self.inp(x[:, i]).unsqueeze(1)
+        return x

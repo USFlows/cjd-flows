@@ -365,6 +365,33 @@ def test_half_precision_layers_keep_dtype(dtype, scale):
         assert torch.allclose(xr.float(), x.float(), atol=0.1)
 
 
+@pytest.mark.parametrize("ctx", [0, CTX])
+@pytest.mark.parametrize("reverse,scale", [(False, False), (True, True)])
+def test_transformer_autoregressive_static_decoding_matches_autograd(ctx, reverse, scale):
+    # inverse without autograd uses preallocated key/value buffers
+    torch.manual_seed(0)
+    layer = perturb(_tar((7, 3), ctx, depth=3, reverse=reverse, scale=scale), 0.2)
+    x, c = _inputs((7, 3), ctx)
+    z = layer(x, c)
+    x_grad = layer.inverse(z, c)
+    with torch.no_grad():
+        x_static = layer.inverse(z, c)
+    with torch.inference_mode():
+        x_inf = layer.inverse(z, c)
+    assert torch.allclose(x_static, x_grad, atol=1e-12)
+    assert torch.allclose(x_inf, x_grad, atol=1e-12)
+    assert torch.allclose(x_static, x, atol=1e-10)
+
+
+def test_transformer_autoregressive_inverse_is_differentiable():
+    torch.manual_seed(0)
+    layer = perturb(_tar((5, 2), 0, scale=True), 0.2)
+    z = torch.randn(3, 5, 2, dtype=torch.float64, requires_grad=True)
+    layer.inverse(z).square().sum().backward()
+    assert z.grad is not None and torch.isfinite(z.grad).all()
+    assert layer.inp.weight.grad is not None
+
+
 def test_transformer_autoregressive_validates_shape():
     with pytest.raises(ValueError):
         TransformerAutoregressive((2, 3, 3))
