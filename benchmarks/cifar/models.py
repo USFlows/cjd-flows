@@ -15,13 +15,13 @@ not in the library.
 
 from __future__ import annotations
 
-import math
 from typing import Optional
 
 import torch
-from torch import Tensor, nn
+from torch import nn
 
-from cjd_flows.bijections.coupling import SplitAdditiveCoupling, _SplitCoupling
+from benchmarks.baselines import AffineJetCoupling, VariableDetFlow
+from cjd_flows.bijections.coupling import SplitAdditiveCoupling
 from cjd_flows.bijections.linear import GlobalScale, Permutation, Shift
 from cjd_flows.bijections.reshape import Squeeze
 from cjd_flows.conditioners import JetConditioner
@@ -37,50 +37,6 @@ SIZES = {
 }
 
 SPATIAL = ("checkerboard", "spatial-row", "spatial-col")
-
-
-class AffineJetCoupling(_SplitCoupling):
-    """Jet-style affine coupling ``y_b = x_b * 2 sigmoid(s) + t`` (non-constant det)."""
-
-    _out_factor = 2
-    piecewise_affine = False
-    volume_preserving = False
-
-    def _st(self, params: Tensor):
-        s, t = params.chunk(2, dim=1)
-        log_scale = torch.nn.functional.logsigmoid(s.float()) + math.log(2.0)
-        return log_scale, t
-
-    def forward_with_logdet(self, x: Tensor, context: Optional[Tensor] = None):
-        xa, xb = self._split(x)
-        log_scale, t = self._st(self._params(xa, context))
-        yb = xb * log_scale.exp().to(xb.dtype) + t
-        return self._merge(xa, yb), log_scale.flatten(1).sum(1)
-
-    def forward(self, x: Tensor, context: Optional[Tensor] = None) -> Tensor:
-        return self.forward_with_logdet(x, context)[0]
-
-    def inverse(self, z: Tensor, context: Optional[Tensor] = None) -> Tensor:
-        za, zb = self._split(z)
-        log_scale, t = self._st(self._params(za, context))
-        return self._merge(za, (zb - t) * (-log_scale).exp().to(zb.dtype))
-
-
-class VariableDetFlow(Flow):
-    """Flow wrapper that also accumulates per-sample log-dets (for the affine baseline)."""
-
-    def log_prob(self, x: Tensor, context: Optional[Tensor] = None) -> Tensor:
-        ctx = self._context(context, x.shape[0], x)
-        ld = x.new_zeros(x.shape[0], dtype=torch.float32)
-        z = x
-        for b in self.bijection:
-            if hasattr(b, "forward_with_logdet"):
-                z, ldj = b.forward_with_logdet(z, ctx)
-                ld = ld + ldj
-            else:
-                z = b(z, ctx)
-                ld = ld + b.log_abs_det()
-        return self.base.log_prob(z) + ld
 
 
 def make_conditioner(embed_dim: int, depth: int, context_dim: int = 0, kind: str = "jet"):
