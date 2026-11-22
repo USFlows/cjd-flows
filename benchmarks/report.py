@@ -1,4 +1,4 @@
-"""Aggregates benchmark results into markdown tables (written next to the run outputs, not versioned) and a JSON summary.
+"""Aggregates benchmark results into markdown tables (written next to the run outputs, not versioned).
 
 Usage::
 
@@ -15,9 +15,11 @@ from statistics import mean, stdev
 
 
 def load_jsonl(path: Path):
+    """Complete records of a results file; an unterminated last line (a sweep still appending) is skipped."""
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    lines = path.read_text().split("\n")[:-1]
+    return [json.loads(line) for line in lines if line.strip()]
 
 
 def fmt(vals, digits=3):
@@ -126,6 +128,93 @@ def arch_section(runs: Path) -> str:
                    "(higher is better; mean over mixing layers and seeds)\n")
         out.append(pivot(aligned, row, lambda r: r["base"], "spearman_norm_vs_true", 3, lower_better=False))
         out.append("\n" + provenance(aligned))
+        ranked = [r for r in aligned if r.get("spearman_model_vs_true") is not None]
+        if ranked:
+            out.append("\n### Spearman correlation between model log-density and true log-density "
+                       "(for comparison; mean over mixing layers and seeds)\n")
+            out.append("For the US flows with a radially monotone base the two tables agree (the latent norm "
+                       "orders the inputs exactly like the model density); a gap between them means the model "
+                       "density ranks the inputs well but its latent norm does not.\n")
+            out.append(pivot(ranked, row, lambda r: r["base"], "spearman_model_vs_true", 3, lower_better=False))
+            out.append("\n" + provenance(ranked))
+    return "\n".join(out)
+
+
+def _images_records(runs: Path, task: str):
+    recs = []
+    for f in sorted((runs / "images" / task).glob("results*.jsonl")):
+        recs += [r for r in load_jsonl(f) if r.get("ok")]
+    return recs
+
+
+def _last_epoch_note(recs) -> str:
+    n_last = sum(r.get("best_epoch") == r.get("epochs") for r in recs)
+    note = f"Selected checkpoint at the last epoch in {n_last} of {len(recs)} runs"
+    if n_last > len(recs) / 2:
+        note += " (the validation NLL was still improving: the epoch budget is too short for convergence)"
+    return note + ".\n"
+
+
+def images_section(runs: Path) -> str:
+    """MNIST / Fashion-MNIST (images/run.py): density in bits/dim and one-class anomaly detection."""
+    out = []
+
+    def row(r):
+        return f"{r['dataset']} / {r['coupling']}"
+
+    dens = _images_records(runs, "density")
+    if dens:
+        out.append("\n\n## MNIST / Fashion-MNIST density (test bits/dim, lower is better)\n")
+        out.append("8 blocks, ConvNet conditioners (hidden 128, 128), fixed epoch budget, EMA, checkpoint "
+                   "selection on a validation split carved out of the training set. Rows: dataset / coupling; "
+                   "columns: base distribution; mean ± std over seeds.\n")
+        out.append(pivot(dens, row, lambda r: r["base"], "test_bpd"))
+        out.append("\n" + _last_epoch_note(dens))
+        out.append(provenance(dens))
+    oc = _images_records(runs, "oneclass")
+    if oc:
+        # average over seeds per (dataset, class, coupling, base) first, so that the spread is over classes
+        per_class = defaultdict(list)
+        for r in oc:
+            per_class[(r["dataset"], r["cls"], r["coupling"], r["base"])].append(r)
+        scores = sorted({s for r in oc for s in r["metrics"]})
+        out.append("\n\n## One-class anomaly detection on MNIST / Fashion-MNIST (test AUROC, higher is better)\n")
+        out.append("One model per class (that class = normal, all other test classes = anomalous); same models "
+                   "and protocol as the density table. Mean ± std over the classes (each class averaged over "
+                   "its seeds first). Scores: `nll` = −log p(x); `latent_norm` = ‖z‖; `hdr` = P(‖Z‖ ≤ ‖z‖) "
+                   "under the base; `typicality` = −log of the base's norm density at ‖z‖. For the "
+                   "Gaussian base `hdr` saturates numerically in high dimensions (issue #107), so its AUROC "
+                   "there is not meaningful.\n")
+        for score in scores:
+            cells = []
+            for (ds, _cls, coupling, base), rs in per_class.items():
+                vals = [r["metrics"][score]["auroc"] for r in rs if score in r["metrics"]]
+                if vals:
+                    cells.append(dict(dataset=ds, coupling=coupling, base=base, auroc=mean(vals)))
+            if cells:
+                out.append(f"\n### Score: {score} (rows: dataset / coupling; columns: base)\n")
+                out.append(pivot(cells, row, lambda r: r["base"], "auroc", 3, lower_better=False))
+                out.append("\n")
+        n_classes = defaultdict(set)
+        for ds, cls, coupling, base in per_class:
+            n_classes[(ds, coupling, base)].add(cls)
+        counts = sorted({len(v) for v in n_classes.values()})
+        if len(counts) > 1:
+            out.append(f"\n**Incomplete sweep:** the cells average over {counts[0]}–{counts[-1]} classes, "
+                       "so they are not yet comparable.\n")
+        main_score = "nll" if "nll" in scores else scores[0]
+        out.append(f"\n### Per-class AUROC, score {main_score} (mean over seeds)\n")
+        cells = []
+        for (ds, cls, coupling, base), rs in per_class.items():
+            vals = [r["metrics"][main_score]["auroc"] for r in rs if main_score in r["metrics"]]
+            if vals:
+                cells.append(dict(dataset=ds, cls=cls, model=f"{coupling} / {base}", auroc=mean(vals)))
+        out.append(pivot(cells, lambda r: f"{r['dataset']} / {r['cls']}", lambda r: r["model"], "auroc", 3,
+                         lower_better=False))
+        out.append("\n\nNormal-class test bits/dim (mean ± std over classes):\n")
+        out.append(pivot(oc, row, lambda r: r["base"], "normal_test_bpd"))
+        out.append("\n" + _last_epoch_note(oc))
+        out.append(provenance(oc))
     return "\n".join(out)
 
 
@@ -177,7 +266,7 @@ def main():
     ap.add_argument("--out", default="benchmarks/runs/report.md")
     args = ap.parse_args()
     runs = Path(args.runs)
-    md = "# Benchmark results\n\nGenerated by `benchmarks/report.py`.\n\n" + density_section(runs) + arch_section(runs) + cifar_section(runs) + "\n"
+    md = "# Benchmark results\n\nGenerated by `benchmarks/report.py`.\n\n" + density_section(runs) + arch_section(runs) + images_section(runs) + cifar_section(runs) + "\n"
     Path(args.out).write_text(md)
     print(md)
 
