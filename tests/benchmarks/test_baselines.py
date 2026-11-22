@@ -52,3 +52,11 @@ def test_affine_reference_image_shape():
     x = torch.randn(3, 2, 4, 4, dtype=torch.float64)
     assert flow.log_prob(x).shape == (3,)
     assert torch.allclose(flow.bijection.inverse(flow.transform(x)), x, atol=1e-10)
+
+
+def test_half_precision_flow_keeps_fp32_log_density():
+    flow = _perturbed("permutation", "gaussian").to(torch.bfloat16)
+    x = torch.randn(4, 3, dtype=torch.bfloat16)
+    lp = flow.log_prob(x)
+    assert lp.dtype == torch.float32  # the fp32 log-determinant accumulator is not cast down
+    assert torch.isfinite(lp).all()

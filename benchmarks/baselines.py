@@ -67,7 +67,7 @@ class VariableDetFlow(Flow):
             else:
                 z = b(z, ctx)
                 ld = ld + b.log_abs_det()
-        return self.base.log_prob(z) + ld.to(z.dtype)
+        return self.base.log_prob(z) + ld  # keeps the >= fp32 accumulator (type promotion)
 
 
 def affine_reference_flow(
