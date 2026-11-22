@@ -100,6 +100,56 @@ def test_plots_and_independence_tests():
     assert np.isfinite(chi2_stat) and 0 <= p_value <= 1
 
 
+def _stretched(flow, x, factor=1.5):
+    """Data whose latents are stretched along the first coordinate (directions no longer radial)."""
+    loc = getattr(flow.base, "loc", 0.0)
+    z = flow.transform(x) - loc
+    z[:, 0] *= factor
+    return flow.bijection.inverse(z + loc).detach()
+
+
+@pytest.mark.parametrize("p,base", [(1.0, "laplace"), (2.0, "gaussian")])
+def test_binned_uniformity_uses_cone_measure(p, base):
+    # equal-probability Cartesian cells would reject these radial samples
+    flow = _flow(base=base, p=p, d=2)
+    x = _samples(flow, 400)
+    np.random.seed(0)
+    assert RadialFlowEvaluator(flow, x).binned_uniformity_test(n_bins=4)[1] > 0.01  # was ~1e-39
+    np.random.seed(0)
+    assert RadialFlowEvaluator(flow, _stretched(flow, x, 2.0)).binned_uniformity_test(n_bins=4)[1] < 0.01
+
+
+def test_simplex_uniformity_tests_are_calibrated():
+    flow = _flow(d=3)
+    ev = RadialFlowEvaluator(flow, _samples(flow, 300))
+    np.random.seed(0)
+    p_bh, reject_bh = ev.test_uniformity_simplex(method="bhattacharyya", n_boot=200)
+    assert not reject_bh and p_bh > 0.05
+    np.random.seed(0)
+    bad = RadialFlowEvaluator(flow, _stretched(flow, _samples(flow, 300), 2.0))
+    assert bad.test_uniformity_simplex(n_samples_ref=300, n_boot=100)[1]
+    with pytest.raises(ValueError):
+        ev.test_uniformity_simplex(method="nope")
+
+
+def test_pp_plot_falls_back_without_cdf():
+    class SampleOnly(torch.distributions.Distribution):
+        arg_constraints = {}
+
+        def __init__(self):
+            super().__init__(validate_args=False)
+
+        def sample(self, sample_shape=()):
+            return torch.distributions.Chi2(torch.tensor(4.0, dtype=torch.float64)).sample(sample_shape).sqrt()
+
+    flow = _flow(base="gaussian", p=2.0)
+    ev = RadialFlowEvaluator(flow, _samples(flow, 200), p=2.0, norm_distribution=SampleOnly(), loc=torch.zeros(4))
+    with pytest.raises(NotImplementedError):
+        SampleOnly().cdf(torch.ones(1))
+    assert isinstance(ev.pp_plot_norms(n_samples=500), plt.Axes)
+    plt.close("all")
+
+
 def test_binned_uniformity_rejects_high_dimensions():
     flow = _flow(d=24)
     ev = RadialFlowEvaluator(flow, _samples(flow, 50))

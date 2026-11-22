@@ -201,11 +201,15 @@ class RadialFlowEvaluator:
         sorted_norms = np.sort(self._latent_norms())
         n = len(sorted_norms)
         empirical_cdf = np.arange(1, n + 1) / n
+        theoretical_cdf = None
         if hasattr(self.norm_distribution, "cdf"):
-            with torch.no_grad():
-                r = torch.as_tensor(sorted_norms, device=self.device, dtype=self.latents.dtype)
-                theoretical_cdf = self.norm_distribution.cdf(r).detach().cpu().numpy()
-        else:
+            try:
+                with torch.no_grad():
+                    r = torch.as_tensor(sorted_norms, device=self.device, dtype=self.latents.dtype)
+                    theoretical_cdf = self.norm_distribution.cdf(r).detach().cpu().numpy()
+            except NotImplementedError:  # e.g. torch.distributions without a CDF
+                theoretical_cdf = None
+        if theoretical_cdf is None:
             samples = np.sort(self._norm_samples(n_samples))
             theoretical_cdf = np.searchsorted(samples, sorted_norms) / n_samples
         with _plot_context():
@@ -220,27 +224,63 @@ class RadialFlowEvaluator:
         return ax
 
     # --------------------------------------------------------------- radiality
-    def binned_uniformity_test(self, n_bins=10):
-        """Chi-squared test of the binned directions ``z / ||z||_p`` against uniform bins.
+    def binned_uniformity_test(self, n_bins=10, n_reference=None):
+        """Chi-squared test of the binned directions ``z / ||z||_p`` against an Lp-radial law.
 
-        Bins every coordinate into ``n_bins`` cells, so it is only meaningful
-        for low dimensions (``n_bins ** dim`` cells). Returns ``(chi2, p_value)``.
+        Every coordinate of the direction is binned into ``n_bins`` cells on
+        ``[-1, 1]``. The expected cell probabilities are those of the cone
+        measure on the Lp unit sphere (the direction law of every Lp-radial
+        distribution), estimated from ``n_reference`` exact simulations
+        (default ``max(100_000, 50 N)``). Cells with an expected count below 5
+        are pooled. Only meaningful for low dimensions (``n_bins ** dim``
+        cells). Returns ``(chi2, p_value)``.
         """
         total_bins = n_bins**self.dim
         if total_bins > 2**62:
             raise ValueError(f"n_bins ** dim = {n_bins}**{self.dim} cells is too many; use a low-dimensional latent")
         directions = self.latents / torch.linalg.vector_norm(self.latents, ord=self.p, dim=1, keepdim=True)
         directions = directions.detach().cpu().numpy()
-        edges = np.linspace(-1, 1, n_bins + 1)
-        bin_indices = np.zeros(len(directions), dtype=np.int64)
-        for dim in range(self.dim):
-            idx = np.clip(np.digitize(directions[:, dim], edges) - 1, 0, n_bins - 1)
-            bin_indices += idx.astype(np.int64) * (n_bins**dim)
-        unique_bins, counts = np.unique(bin_indices, return_counts=True)
-        expected = len(directions) / total_bins
-        chi2_stat = np.sum((counts - expected) ** 2 / expected)
-        p_value = 1 - chi2.cdf(chi2_stat, df=len(unique_bins) - 1)
+        n = len(directions)
+        if n_reference is None:
+            n_reference = max(100_000, 50 * n)
+        ref = self._simulate_lp_directions(n_reference, self.dim)
+        obs_bins, obs_counts = np.unique(self._bin_index(directions, n_bins), return_counts=True)
+        ref_bins, ref_counts = np.unique(self._bin_index(ref, n_bins), return_counts=True)
+        cells = np.union1d(obs_bins, ref_bins)
+        observed = np.zeros(len(cells))
+        observed[np.searchsorted(cells, obs_bins)] = obs_counts
+        expected = np.zeros(len(cells))
+        expected[np.searchsorted(cells, ref_bins)] = ref_counts * (n / n_reference)
+        rare = expected < 5
+        if rare.any():
+            observed = np.append(observed[~rare], observed[rare].sum())
+            expected = np.append(expected[~rare], expected[rare].sum())
+            if expected[-1] == 0:  # observations only in cells the reference never hit
+                expected[-1] = n / n_reference
+        if len(expected) < 2:
+            raise ValueError("Too few populated cells for a chi-squared test; use more data or fewer bins")
+        chi2_stat = np.sum((observed - expected) ** 2 / expected)
+        p_value = 1 - chi2.cdf(chi2_stat, df=len(expected) - 1)
         return chi2_stat, p_value
+
+    def _simulate_lp_directions(self, n, d):
+        """Exact samples of the cone measure on the Lp unit sphere."""
+        if math.isinf(self.p):
+            g = np.random.uniform(-1.0, 1.0, size=(n, d))
+            return g / np.abs(g).max(axis=1, keepdims=True)
+        # i.i.d. coordinates with density proportional to exp(-|x|^p), normalized
+        g = np.random.gamma(1.0 / self.p, 1.0, size=(n, d)) ** (1.0 / self.p)
+        g *= np.random.choice([-1.0, 1.0], size=(n, d))
+        return g / (np.abs(g) ** self.p).sum(axis=1, keepdims=True) ** (1.0 / self.p)
+
+    @staticmethod
+    def _bin_index(directions, n_bins):
+        edges = np.linspace(-1, 1, n_bins + 1)
+        index = np.zeros(len(directions), dtype=np.int64)
+        for dim in range(directions.shape[1]):
+            idx = np.clip(np.digitize(directions[:, dim], edges) - 1, 0, n_bins - 1)
+            index += idx.astype(np.int64) * (n_bins**dim)
+        return index
 
     def hs_independence_test(self, n_permutations=1000):
         """Permutation HSIC test of H0: latent norm and direction are independent.
@@ -278,10 +318,11 @@ class RadialFlowEvaluator:
 
         Args:
             alpha: significance level.
-            method: ``"energy"`` (energy distance, bootstrap p-value) or
-                ``"bhattacharyya"`` (KS test of centred log-coordinates).
+            method: ``"energy"`` (energy distance) or ``"bhattacharyya"``
+                (KS distance of centred log-coordinates); both with
+                p-values from simulated uniform samples.
             n_samples_ref: reference samples for the energy distance.
-            n_boot: bootstrap repetitions.
+            n_boot: simulation repetitions for the p-value.
 
         Returns:
             ``(p_value, reject)``.
@@ -297,7 +338,7 @@ class RadialFlowEvaluator:
         if method == "energy":
             return self._energy_uniformity_test(u, alpha, n_samples_ref, n_boot)
         if method == "bhattacharyya":
-            return self._bhattacharyya_uniformity_test(u, alpha)
+            return self._bhattacharyya_uniformity_test(u, alpha, n_boot)
         raise ValueError(f"Unknown method: {method}")
 
     def _energy_uniformity_test(self, u, alpha, n_samples_ref, n_boot):
@@ -308,10 +349,24 @@ class RadialFlowEvaluator:
         p_value = np.mean(stat_boot >= stat_obs)
         return p_value, p_value < alpha
 
-    def _bhattacharyya_uniformity_test(self, u, alpha):
-        y = -np.log(u)
-        residuals = y - y.mean(axis=1, keepdims=True)
-        _, p_value = stats.kstest(residuals.flatten(), "gumbel_r")
+    def _bhattacharyya_uniformity_test(self, u, alpha, n_boot=1000):
+        """KS distance of the centred log-coordinates to a Gumbel law, calibrated by simulation.
+
+        The centred log-coordinates of a uniform simplex sample are neither
+        exactly Gumbel nor independent, so the p-value comes from the same
+        statistic on ``n_boot`` simulated uniform samples of the same size.
+        Pooling all coordinates makes it weak against anisotropic latents;
+        the energy test (default) has much more power there.
+        """
+
+        def statistic(v):
+            y = -np.log(v)
+            return stats.kstest((y - y.mean(axis=1, keepdims=True)).ravel(), "gumbel_r").statistic
+
+        n, d = u.shape
+        stat_obs = statistic(u)
+        stat_boot = np.array([statistic(self._simulate_uniform_simplex(n, d)) for _ in range(n_boot)])
+        p_value = np.mean(stat_boot >= stat_obs)
         return p_value, p_value < alpha
 
     def _simulate_uniform_simplex(self, n, d):
