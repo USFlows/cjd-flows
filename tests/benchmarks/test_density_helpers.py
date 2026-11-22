@@ -32,3 +32,17 @@ def test_run_one_records_convergence_information():
     assert rec["epochs_run"] >= 1 and 1 <= rec["best_epoch"] <= rec["epochs_run"]
     assert len(rec["val_curve"]) == rec["epochs_run"]
     assert min(rec["val_curve"]) == pytest.approx(rec["best_val_nll"])
+
+
+def test_run_one_records_a_failed_device_lookup(monkeypatch):
+    common = pytest.importorskip("benchmarks.common")
+
+    def broken(device):
+        raise RuntimeError(f"no such device: {device}")
+
+    monkeypatch.setattr(common, "device_name", broken)
+    spec = dict(dataset="two_moons", base="gaussian", coupling="additive", mixing="lu", seed=0, blocks=2,
+                hidden=[16], steps=10, threads=1)
+    rec = run.run_one(spec, meta={"git_commit": "abc"}, device="cuda:99")
+    assert not rec["ok"] and "no such device: cuda:99" in rec["error"]
+    assert rec["meta"]["git_commit"] == "abc"

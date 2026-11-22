@@ -107,9 +107,10 @@ def run_one(spec, meta=None, device="cpu") -> dict:
 
     rec = dict(spec)
     # captured once at the start of the sweep (the checkout may change while it runs)
-    # device resolved here, in the worker: the sweep's parent process stays off the GPU
-    rec["meta"] = {**meta, "device": device_name(device)} if meta is not None else run_metadata(device)
+    rec["meta"] = dict(meta) if meta is not None else run_metadata("cpu")
     try:
+        # resolved here, in the worker: the sweep's parent process stays off the GPU
+        rec["meta"]["device"] = device_name(device)
         t0 = time.time()
         tr, va, te, exact = load_data(spec)
         D = tr.shape[1]
