@@ -67,13 +67,18 @@ on a shell around it; `RadialMixture` places several radial components at
 independently located, learnable centres.
 
 {mod}`cjd_flows.radial.levelsets` computes the latent level sets that
-verification and calibrated anomaly scores need. `udl_radius`,
-`density_threshold_radius` and, for monotone profiles, `hdr_pvalue` are exact up
-to floating-point and root-finding precision. `udl_intervals`, and `hdr_pvalue`
-for non-monotone ("shell") profiles, are computed on a log-radius grid
-(65,536 cells by default) and are numerical approximations: narrow shells or
-threshold crossings inside a grid cell can be missed. Use monotone profiles
-when the level sets must be exact, e.g. for verification.
+verification and calibrated anomaly scores need. For monotone profiles the
+level sets are exactly norm balls; only their radii and masses are computed
+numerically (`udl_radius`, `density_threshold_radius`, `hdr_pvalue`). The
+accuracy depends on the norm distribution: the generalized-gamma family has an
+analytic CDF (quantiles by bisection), while `KhinchineNorm` and
+`MonotoneProfileNorm` use quadrature or tabulated CDFs on a grid
+(`KhinchineNorm`: about 1e-5 in `log p` with the default grid). For
+non-monotone ("shell") profiles, `udl_intervals` and `hdr_pvalue` classify a
+log-radius grid (65,536 cells by default) and can miss narrow shells or
+threshold crossings inside a cell. For certified verification, use a monotone
+profile and account for the numerical error of the radius, or prefer a norm law
+with an analytic CDF.
 
 **Why monotone profiles matter.** Upper density level sets are norm *balls*
 (polytopes for p = 1 and p = ∞) only if the radial profile is decreasing.
