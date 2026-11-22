@@ -111,7 +111,7 @@ def arch_section(runs: Path) -> str:
 
     out = ["\n\n## Architecture comparison (test NLL in nats, lower is better)\n",
            "8 blocks, MLP conditioners (2×128; GMM: 2×max(128, 4d)), 6000 steps, EMA, selection on the "
-           "validation split. `masked` = VeriFlow-style masked couplings in adjoint LU blocks; `affine` = "
+           "validation split. `masked` = masked additive couplings in adjoint blocks A⁻¹∘C∘A with the mixing layer A of the column (LU = VeriFlow); `affine` = "
            "the same trunk with affine couplings (no constant determinant, benchmark-only reference).\n"]
     for base in sorted({r["base"] for r in recs}):
         sel = [r for r in recs if r["base"] == base]
