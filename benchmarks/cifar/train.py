@@ -184,6 +184,9 @@ def main():
         print(f"[{name}] skipped (listed in {skip_file})", flush=True)
         return
     out.mkdir(parents=True, exist_ok=True)
+    from benchmarks.common import run_metadata
+
+    meta = run_metadata(str(device))  # before training: the checkout may change during a long run
     (out / "args.json").write_text(json.dumps(vars(args), indent=2))
 
     # TensorBoard is optional: metrics.jsonl and the PNG grids are the primary outputs
@@ -318,10 +321,7 @@ def main():
                       f"({(time.time()-t0)/60:.1f} min)", flush=True)
                 torch.save({"model": model.state_dict(), "args": vars(args), "step": step}, out / "model.pt")
     # no selection on the test split: report the final model only
-    from benchmarks.common import run_metadata
-
-    final = {"final_test_bpd": tbpd, "minutes": (time.time() - t0) / 60, "params": n_params,
-             "meta": run_metadata(str(device))}
+    final = {"final_test_bpd": tbpd, "minutes": (time.time() - t0) / 60, "params": n_params, "meta": meta}
     (out / "final.json").write_text(json.dumps(final, indent=2))
     print(f"[{name}] DONE {final}", flush=True)
 
