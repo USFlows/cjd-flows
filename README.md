@@ -73,6 +73,24 @@ flow = VeriFlow((1, 10, 10))           # ReLU conditioners, adjoint LU blocks, m
 assert flow.is_piecewise_affine()
 ```
 
+### Saving and loading
+
+Flows built with `USFlow` / `VeriFlow` remember their builder arguments, so a
+saved file is enough to rebuild them:
+
+```python
+from cjd_flows import load, save
+
+save(flow, "flow.pt", metadata={"epochs": 30})
+flow = load("flow.pt")                   # rebuilt from the stored configuration, eval mode
+```
+
+The file holds tensors, strings and numbers only and is read with
+`torch.load(..., weights_only=True)`. Flows with a custom conditioner factory or
+your own architecture are loaded into a model you construct:
+`load(path, model=my_flow)`. Register your own builder functions with
+`cjd_flows.io.register_builder` to make them rebuildable as well.
+
 ## Core concepts
 
 | Concept | API |
@@ -82,6 +100,7 @@ assert flow.is_piecewise_affine()
 | Flow | `Flow(bijection, base)`: `log_prob`, `sample`, `rsample`, `transform`, `generate`, `log_abs_det` |
 | Training | `cjd_flows.fit(...)`: AdamW, warmup + cosine, EMA, validation and early stopping, bf16, noise augmentation and soft training |
 | Testing | `cjd_flows.testing.check_bijection(layer, x)`: inverse, log-det vs autograd, constancy and gradients for your own layers |
+| Save / load | `cjd_flows.save(flow, path)`, `cjd_flows.load(path)`: weights plus the builder configuration; see below |
 
 ### Building blocks (`cjd_flows.bijections`)
 
