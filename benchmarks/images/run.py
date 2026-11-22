@@ -4,9 +4,16 @@ Compact matrix: couplings {additive, gin, affine reference} x bases {gaussian,
 ggmix-monotone, radial-mixture}; ConvNet conditioners (USFlow defaults for
 images), 8 blocks, hidden (128, 128), ~1.2M parameters for every variant.
 
-Protocol: the validation split is carved out of the training data (fixed seed,
-identical for every run) and used for early stopping and checkpoint selection;
-the test split is evaluated once, for the selected model.
+Protocol: fixed epoch budget; the validation split is carved out of the training
+data (fixed seed, identical for every run) and selects the checkpoint (best
+validation NLL, ``restore="best"``; no early stopping, so every model gets the
+same budget). The test split is evaluated once, for the selected model. Runs
+whose training aborts (non-finite losses) are recorded as failed.
+
+For the affine reference (no constant determinant) the ``nll`` anomaly score is
+computed with its own ``log_prob``: :func:`cjd_flows.scores.anomaly_scores`
+assumes the library contract (constant ``log_abs_det``) and would drop the
+input-dependent coupling determinants.
 
 * ``density``: train on the training set (minus 5000 validation images), report
   test bits/dim.
@@ -89,6 +96,34 @@ def load_data(spec):
     return train, val, test_in, test_out
 
 
+def _nll_scores(flow, data, batch_size=1000):
+    """Per-sample ``-log p(x)`` from the flow's own ``log_prob`` (on the GPU)."""
+    import torch
+    from torch.utils.data import DataLoader
+
+    out = []
+    for batch in DataLoader(data, batch_size=batch_size):
+        x = batch[0] if isinstance(batch, (list, tuple)) else batch
+        out.append(-flow.log_prob(x.to("cuda")).float().cpu())
+    return torch.cat(out)
+
+
+def _read_records(path):
+    """Complete JSON records of a results file; a partial last line (interrupted write) is skipped."""
+    records = []
+    lines = path.read_text().splitlines()
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            if i == len(lines) - 1:
+                continue  # incomplete tail of an interrupted append
+            raise ValueError(f"{path}:{i + 1}: malformed record") from None
+    return records
+
+
 def run_one(spec, meta) -> dict:
     import torch
 
@@ -109,6 +144,8 @@ def run_one(spec, meta) -> dict:
         flow.eval()
         rec.update(best_epoch=res.best_epoch, restored=res.restored, steps_done=res.steps,
                    best_val_nll=float(res.best_val_loss) if res.best_val_loss is not None else None)
+        if res.aborted:
+            raise RuntimeError(f"training aborted after {res.steps} steps (non-finite losses)")
         ref = test_a.dataset if hasattr(test_a, "dataset") else test_a
         dim, pld = ref.dim, ref.preprocessing_log_det
         with torch.no_grad():
@@ -117,6 +154,8 @@ def run_one(spec, meta) -> dict:
             if spec["task"] == "oneclass":
                 s_in = anomaly_scores(flow, test_a, device="cuda", batch_size=1000)
                 s_out = anomaly_scores(flow, test_b, device="cuda", batch_size=1000)
+                if spec["coupling"] == "affine":  # input-dependent determinants: use the flow's log_prob
+                    s_in["nll"], s_out["nll"] = _nll_scores(flow, test_a), _nll_scores(flow, test_b)
                 rec["metrics"] = {k: detection_metrics(s_in[k], s_out[k]) for k in s_in}
         rec["minutes"] = (time.time() - t0) / 60
         rec["ok"] = True
@@ -156,13 +195,17 @@ def main():
 
     done = set()
     for f in out.glob("results*.jsonl"):
-        for line in f.read_text().splitlines():
-            r = json.loads(line)
+        for r in _read_records(f):
             if r.get("ok"):
                 done.add(resume_key(r))
     specs = [s for s in specs if resume_key(s) not in done]
     print(f"[shard {args.shard}] {len(specs)} runs to do", flush=True)
-    with open(out / f"results_shard{args.shard}.jsonl", "a") as f:
+    own = out / f"results_shard{args.shard}.jsonl"
+    if own.exists():
+        data = own.read_bytes()
+        if data and not data.endswith(b"\n"):  # drop an incomplete tail (its run is re-done)
+            own.write_bytes(data[: data.rfind(b"\n") + 1])
+    with open(own, "a") as f:
         for spec in specs:
             rec = run_one(spec, meta)
             f.write(json.dumps(rec) + "\n")
