@@ -28,12 +28,27 @@ os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
 os.environ.setdefault("HIP_VISIBLE_DEVICES", "")
 
 
-def spearman(a, b) -> float:
+def _average_ranks(a):
+    """Ranks with ties replaced by their average rank (as in scipy.stats.rankdata)."""
+    import torch
 
-    ra = a.argsort().argsort().double()
-    rb = b.argsort().argsort().double()
+    values, order = a.sort()
+    _, inverse, counts = torch.unique_consecutive(values, return_inverse=True, return_counts=True)
+    ends = counts.cumsum(0)
+    average = (ends - counts + ends - 1).double() / 2
+    ranks = torch.empty(a.shape, dtype=torch.float64)
+    ranks[order] = average[inverse]
+    return ranks
+
+
+def spearman(a, b):
+    """Spearman rank correlation with tie handling; ``None`` if either input is constant (undefined)."""
+    ra, rb = _average_ranks(a), _average_ranks(b)
     ra, rb = ra - ra.mean(), rb - rb.mean()
-    return float((ra * rb).sum() / (ra.norm() * rb.norm()))
+    denom = ra.norm() * rb.norm()
+    if float(denom) == 0.0:
+        return None
+    return float((ra * rb).sum() / denom)
 
 
 def load_data(spec):

@@ -118,7 +118,9 @@ def arch_section(runs: Path) -> str:
         out.append(f"\n### Base: {base} (rows: dataset / coupling; columns: mixing layer)\n")
         out.append(pivot(sel, row, lambda r: r.get("mixing", "lu"), "test_nll"))
         out.append("\n" + provenance(sel))
-    aligned = [r for r in recs if r.get("spearman_norm_vs_true") is not None]
+    # checkerboard has a constant density on its support: a rank correlation with it is
+    # undefined (records from before the tie-aware spearman() carry arbitrary values)
+    aligned = [r for r in recs if r.get("spearman_norm_vs_true") is not None and r["dataset"] != "checkerboard"]
     if aligned:
         out.append("\n### Alignment: Spearman correlation between −latent norm and true log-density "
                    "(higher is better; mean over mixing layers and seeds)\n")
