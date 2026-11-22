@@ -365,6 +365,65 @@ def test_half_precision_layers_keep_dtype(dtype, scale):
         assert torch.allclose(xr.float(), x.float(), atol=0.1)
 
 
+@pytest.mark.parametrize("ctx", [0, CTX])
+@pytest.mark.parametrize("reverse,scale", [(False, False), (True, True)])
+def test_transformer_autoregressive_static_decoding_matches_autograd(ctx, reverse, scale):
+    # inverse without autograd uses preallocated key/value buffers
+    torch.manual_seed(0)
+    layer = perturb(_tar((7, 3), ctx, depth=3, reverse=reverse, scale=scale), 0.2)
+    x, c = _inputs((7, 3), ctx)
+    z = layer(x, c)
+    x_grad = layer.inverse(z, c)
+    with torch.no_grad():
+        x_static = layer.inverse(z, c)
+    with torch.inference_mode():
+        x_inf = layer.inverse(z, c)
+    assert torch.allclose(x_static, x_grad, atol=1e-12)
+    assert torch.allclose(x_inf, x_grad, atol=1e-12)
+    assert torch.allclose(x_static, x, atol=1e-10)
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("scale", [False, True])
+@pytest.mark.parametrize("mode", ["no_grad", "inference_mode"])
+def test_transformer_autoregressive_static_decoding_half_precision(dtype, scale, mode):
+    torch.manual_seed(0)
+    layer = perturb(TransformerAutoregressive((6, 4), embed_dim=16, depth=2, num_heads=2, scale=scale), 0.05)
+    layer = layer.to(dtype)
+    x = torch.randn(3, 6, 4, dtype=dtype)
+    ctx = torch.no_grad() if mode == "no_grad" else torch.inference_mode()
+    with ctx:
+        z = layer(x)
+        xr = layer.inverse(z)
+        xr_again = layer.inverse(layer(x))
+    assert z.dtype == dtype and xr.dtype == dtype
+    assert torch.equal(xr, xr_again)  # deterministic
+    tol = 0.05 if dtype == torch.bfloat16 else 0.01
+    assert torch.allclose(xr.float(), x.float(), atol=tol)
+
+
+@pytest.mark.parametrize("mode", ["no_grad", "inference_mode"])
+def test_transformer_autoregressive_static_decoding_under_autocast(mode):
+    # fp32 layer and data, bf16 autocast: buffers follow the autocast dtype
+    torch.manual_seed(0)
+    layer = perturb(TransformerAutoregressive((6, 4), embed_dim=16, depth=2, num_heads=2, scale=True), 0.05)
+    x = torch.randn(3, 6, 4)
+    ctx = torch.no_grad() if mode == "no_grad" else torch.inference_mode()
+    with ctx, torch.autocast("cpu", dtype=torch.bfloat16):
+        xr = layer.inverse(layer(x))
+    assert xr.dtype == torch.float32
+    assert torch.allclose(xr, x, atol=0.05)
+
+
+def test_transformer_autoregressive_inverse_is_differentiable():
+    torch.manual_seed(0)
+    layer = perturb(_tar((5, 2), 0, scale=True), 0.2)
+    z = torch.randn(3, 5, 2, dtype=torch.float64, requires_grad=True)
+    layer.inverse(z).square().sum().backward()
+    assert z.grad is not None and torch.isfinite(z.grad).all()
+    assert layer.inp.weight.grad is not None
+
+
 def test_transformer_autoregressive_validates_shape():
     with pytest.raises(ValueError):
         TransformerAutoregressive((2, 3, 3))
