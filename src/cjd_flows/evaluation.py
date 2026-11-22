@@ -297,11 +297,12 @@ class RadialFlowEvaluator:
         H = torch.eye(n, device=K_n.device, dtype=K_n.dtype) - 1.0 / n
         K_n = H @ K_n @ H
         K_d = H @ K_d @ H
-        hsic_value = torch.trace(K_n @ K_d) / (n * n)
+        # trace(A @ B) = sum(A * B.T): O(N^2) per permutation instead of O(N^3)
+        hsic_value = torch.sum(K_n * K_d.T) / (n * n)
         permuted = np.empty(n_permutations)
         for i in range(n_permutations):
             perm = torch.randperm(n, device=K_d.device)
-            permuted[i] = torch.trace(K_n @ K_d[perm][:, perm]).item()
+            permuted[i] = torch.sum(K_n * K_d[perm][:, perm].T).item()
         p_value = (permuted / (n * n) >= hsic_value.item()).mean()
         return hsic_value.item(), p_value
 

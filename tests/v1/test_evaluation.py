@@ -150,6 +150,23 @@ def test_pp_plot_falls_back_without_cdf():
     plt.close("all")
 
 
+def test_hsic_matches_trace_formula():
+    flow = _flow(d=3)
+    ev = RadialFlowEvaluator(flow, _samples(flow, 120))
+    torch.manual_seed(0)
+    hsic, p_value = ev.hs_independence_test(n_permutations=30)
+    # reference: the explicit trace(H K_n H H K_d H) / n^2
+    norms = torch.linalg.vector_norm(ev.latents, ord=1, dim=1).unsqueeze(1)
+    dirs = ev.latents / norms
+    norms = (norms - norms.mean()) / norms.std()
+    dirs = (dirs - dirs.mean(0)) / dirs.std(0)
+    n = len(norms)
+    H = torch.eye(n, dtype=norms.dtype) - 1.0 / n
+    ref = torch.trace(H @ ev._rbf_kernel(norms) @ H @ H @ ev._rbf_kernel(dirs) @ H) / n**2
+    assert abs(hsic - ref.item()) < 1e-10
+    assert 0 <= p_value <= 1
+
+
 def test_binned_uniformity_rejects_high_dimensions():
     flow = _flow(d=24)
     ev = RadialFlowEvaluator(flow, _samples(flow, 50))
