@@ -88,13 +88,17 @@ approximation sense.
 
 ## Latent-space alignment
 
-Uniformly scaling flows preserve upper density level sets: data-space density
-level sets map onto latent norm level sets. The 2D GMM example below colours
-latent representations by the data density.
+Uniformly scaling flows preserve density level sets:
+`{x : p(x) ≥ t} = f⁻¹({z : p_Z(z) ≥ t / |det J_f|})`, i.e. only the threshold is
+rescaled by the global volume factor. For a radial base the latent level sets
+are norm spheres, and the upper level sets are norm balls when the radial
+profile decreases. The 2D GMM example below colours latent representations by
+the data density.
 
 | US flow | Non-US flow |
 |---|---|
 | ![US](images/contour_latent_2d_gmm_US_density.png) | ![Non-US](images/contour_latent_2d_gmm_Non-US_density.png) |
 
-For the US flow, density decreases monotonically with the latent norm. For a
-non-US flow, high-density regions are skewed against the latent geometry.
+With a radially decreasing base, the density of a US flow decreases
+monotonically with the latent norm (left). For a non-US flow, high-density
+regions are skewed against the latent geometry (right).

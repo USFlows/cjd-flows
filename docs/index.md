@@ -22,11 +22,12 @@ A constant determinant gives three things:
 The library's main ingredient is the **learnable radial base distribution** of
 VeriFlow, first presented at AISoLA 2023 (Abu Zaid, Diekmann, Neider): an
 Lp-radial base whose 1-D norm distribution is learned jointly with the flow. A
-uniformly scaling flow cannot change the distribution of density values of its
-base, so with a fixed base its expressivity is limited (Draxler et al., ICML
-2024, prove that volume-preserving flows with a fixed base are not universal).
-The learnable norm distribution removes exactly this limitation while keeping
-the latent level-set geometry intact.
+uniformly scaling flow changes the density values of its base only by one
+global factor (its constant Jacobian determinant), so with a fixed base its
+expressivity is limited (Draxler et al., ICML 2024, prove that
+volume-preserving flows with a fixed base are not universal). The learnable
+norm distribution removes exactly this limitation while keeping the latent
+level-set geometry intact.
 
 ```python
 from cjd_flows import USFlow, fit
