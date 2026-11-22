@@ -27,6 +27,7 @@ Optimizer, scheduler and EMA state are not part of the file.
 
 from __future__ import annotations
 
+import contextvars
 import functools
 import inspect
 import json
@@ -44,6 +45,8 @@ FORMAT_VERSION = 1
 _FORMAT = "cjd-flows"
 
 _BUILDERS: Dict[str, Callable[..., nn.Module]] = {}
+# While load() replays a builder: delegated builder name -> saved configuration
+_REPLAY: contextvars.ContextVar[Optional[Dict[str, dict]]] = contextvars.ContextVar("cjd_flows_replay", default=None)
 
 PathLike = Union[str, Path]
 
@@ -74,12 +77,12 @@ def register_builder(fn: Optional[Callable] = None, *, name: Optional[str] = Non
     ``builder_config_error``.
 
     When a registered builder delegates to another one (e.g. ``VeriFlow``
-    calls ``USFlow``), the outer call is recorded and the inner, fully
-    resolved configuration is kept under ``"delegate"``. :func:`load` replays
-    the innermost configuration first, so the defaults of every builder in the
-    chain are frozen at save time; if the weights do not fit (an outer builder
-    changed the model after the inner call), it falls back to the outer
-    builder with a warning.
+    calls ``USFlow``) and returns its model, the outer call is recorded and the
+    inner, fully resolved configuration is kept under ``"delegate"``.
+    :func:`load` replays the outer builder and substitutes the saved inner
+    arguments in its call of the delegated builder (when the explicitly passed
+    arguments match), so the defaults of every builder in the chain are frozen
+    at save time and everything the outer builder does is replayed as well.
 
     Can be used as ``@register_builder`` or ``@register_builder(name="MyFlow")``.
     """
@@ -93,6 +96,9 @@ def register_builder(fn: Optional[Callable] = None, *, name: Optional[str] = Non
 
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
+            saved = (_REPLAY.get() or {}).get(key)
+            if saved is not None and _matches(signature, args, kwargs, saved["kwargs"]):
+                args, kwargs = _split_args(signature, saved["kwargs"])
             model = f(*args, **kwargs)
             bound = signature.bind(*args, **kwargs)
             bound.apply_defaults()
@@ -124,19 +130,48 @@ def _qualname(f: Callable) -> str:
     return f"{getattr(f, '__module__', '')}.{getattr(f, '__qualname__', repr(f))}"
 
 
+def _split_args(signature: inspect.Signature, recorded: dict):
+    """``(args, kwargs)`` for a call with recorded arguments (positional-only ones positionally)."""
+    kwargs = dict(recorded)
+    args = []
+    for p in signature.parameters.values():
+        if p.kind is inspect.Parameter.POSITIONAL_ONLY and p.name in kwargs:
+            args.append(kwargs.pop(p.name))
+    return args, kwargs
+
+
+def _matches(signature: inspect.Signature, args, kwargs, recorded: dict) -> bool:
+    """True if the explicitly passed arguments agree with the recorded ones."""
+    try:
+        explicit = dict(signature.bind(*args, **kwargs).arguments)
+        for p in signature.parameters.values():
+            if p.kind is inspect.Parameter.VAR_KEYWORD and p.name in explicit:
+                explicit.update(explicit.pop(p.name))
+        explicit = _to_json(explicit)
+    except TypeError:
+        return False
+    return all(k in recorded and recorded[k] == v for k, v in explicit.items())
+
+
 def _call_builder(config: dict) -> nn.Module:
-    """Calls the registered builder of ``config`` with its recorded arguments."""
+    """Replays ``config``: calls its builder with the recorded arguments, and
+    its delegated builders with their recorded (default-frozen) arguments."""
     builder = _BUILDERS.get(config["builder"])
     if builder is None:
         raise ValueError(
             f"unknown builder {config['builder']!r}; import the module that registers it before loading"
         )
-    kwargs = dict(config["kwargs"])
-    args = []
-    for p in inspect.signature(builder.__wrapped__).parameters.values():
-        if p.kind is inspect.Parameter.POSITIONAL_ONLY and p.name in kwargs:
-            args.append(kwargs.pop(p.name))
-    return builder(*args, **kwargs)
+    delegates = {}
+    inner = config.get("delegate")
+    while inner is not None:
+        delegates.setdefault(inner["builder"], inner)
+        inner = inner.get("delegate")
+    token = _REPLAY.set(delegates)
+    try:
+        args, kwargs = _split_args(inspect.signature(builder.__wrapped__), config["kwargs"])
+        return builder(*args, **kwargs)
+    finally:
+        _REPLAY.reset(token)
 
 
 # --------------------------------------------------------------------------- save / load
@@ -251,39 +286,12 @@ def load(
         config = json.loads(payload["config"])
         import cjd_flows.models  # noqa: F401  (registers the built-in builders)
 
-        chain = [config]  # outer ... innermost
-        while "delegate" in chain[-1]:
-            chain.append(chain[-1]["delegate"])
-        dtype = getattr(torch, payload["dtype"]) if payload["dtype"] else None
-        error: Optional[Exception] = None
-        for i, cfg in enumerate(reversed(chain)):  # innermost first: all defaults frozen
-            candidate = _call_builder(cfg)
-            if dtype is not None:
-                candidate = candidate.to(dtype)
-            try:  # choose the level strictly, even if the caller asked for strict=False
-                candidate.load_state_dict(payload["state_dict"], strict=True)
-            except RuntimeError as e:  # this level does not reproduce the saved architecture
-                error = e
-                continue
-            if i > 0:
-                warnings.warn(
-                    f"rebuilt {path} with builder {cfg['builder']!r}; the configuration of the delegated "
-                    f"builder did not reproduce the saved weights, so its current defaults were used",
-                    stacklevel=2,
-                )
-            candidate.builder_config = config
-            candidate.builder_config_error = None
-            model = candidate
-            break
-        else:
-            if strict:
-                raise error
-            model = _call_builder(config)
-            if dtype is not None:
-                model = model.to(dtype)
-            model.load_state_dict(payload["state_dict"], strict=False)
-    else:
-        model.load_state_dict(payload["state_dict"], strict=strict)
+        model = _call_builder(config)
+        if payload["dtype"]:
+            model = model.to(getattr(torch, payload["dtype"]))
+        model.builder_config = config
+        model.builder_config_error = None
+    model.load_state_dict(payload["state_dict"], strict=strict)
     if map_location is not None:
         model = model.to(map_location)
     return model.eval()

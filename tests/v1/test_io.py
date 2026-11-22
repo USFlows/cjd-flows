@@ -200,17 +200,40 @@ def test_delegated_defaults_are_frozen(tmp_path, monkeypatch):
     assert torch.equal(loaded.log_prob(x), flow.eval().log_prob(x))
 
 
-def test_outer_builder_that_changes_the_model_falls_back(tmp_path):
+def test_outer_builder_changes_are_replayed(tmp_path, monkeypatch):
     @register_builder(name="WrappedTestFlow")
     def wrapped(dim: int):
-        f = USFlow((dim,), blocks=1, hidden=(4,))
-        f.bijection.bijections.append(LULinear((dim,)))  # changed after the inner call
+        f = USFlow((dim,), blocks=1, hidden=(4,), context_dim=1)
+        f.bijection.bijections.append(LULinear((dim,)))  # changes the state dict
+        f.default_context = None  # changes behaviour, not the state dict
         return f
 
     flow = _perturb(wrapped(3))
     path = save(flow, tmp_path / "f.pt")
-    with pytest.warns(UserWarning, match="WrappedTestFlow"):
+    import cjd_flows.models as models
+
+    monkeypatch.setitem(models.USFlow.__wrapped__.__kwdefaults__, "shift", None)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         loaded = load(path)
+    assert loaded.default_context is None
+    assert any(isinstance(m, Shift) for m in loaded.modules())  # delegated default frozen
+    x, c = torch.randn(4, 3), torch.randn(4, 1)
+    assert torch.equal(loaded.log_prob(x, c), flow.eval().log_prob(x, c))
+
+
+def test_only_matching_delegate_calls_are_substituted(tmp_path, monkeypatch):
+    @register_builder(name="TwoCallTestFlow")
+    def twocall(dim: int):
+        USFlow((dim + 1,), blocks=1, hidden=(4,))  # temporary model with other arguments
+        return USFlow((dim,), blocks=1, hidden=(4,))
+
+    flow = _perturb(twocall(3))
+    path = save(flow, tmp_path / "f.pt")
+    import cjd_flows.models as models
+
+    monkeypatch.setitem(models.USFlow.__wrapped__.__kwdefaults__, "shift", None)
+    loaded = load(path)
     x = torch.randn(4, 3)
     assert torch.equal(loaded.log_prob(x), flow.eval().log_prob(x))
 
