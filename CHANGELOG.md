@@ -47,8 +47,8 @@ pyro-based API of 0.9 stays available as an optional extra.
   `log_prob`, `sample`, `forward` and `inverse` graphs for all bases
   (`cjd_flows.export`).
 - **Evaluation suite** (`cjd_flows.evaluation`): `RadialFlowEvaluator`, moved
-  from `cjd_flows.explib.eval` (which re-exports it) and extended to v1 flows
-  with a radial or Gaussian base. Needs the `eval` extra, not pyro.
+  from `cjd_flows.explib.eval` and extended to v1 flows with a radial or
+  Gaussian base. Needs the `eval` extra, not pyro.
 - **Testing helpers** (`cjd_flows.testing`): `check_bijection`,
   `jacobian_log_abs_det` and `check_flow_normalization` for custom layers.
 - Benchmark scripts in `benchmarks/` (density suite and a CIFAR-10 study).
@@ -57,13 +57,23 @@ pyro-based API of 0.9 stays available as an optional extra.
 
 - Packaging moved from Poetry to [uv](https://docs.astral.sh/uv/) and hatchling.
   The core only depends on `torch` and `numpy`; everything else is an extra
-  (`legacy`, `onnx`, `eval`, `vision`, `experiments`, `docs`).
-- Requires Python ≥ 3.10.
+  (`legacy`, `onnx`, `eval`, `vision`, `docs`).
+- Requires Python ≥ 3.11 (3.10 has reached end of life; Pillow, pulled in by
+  the `eval`/`vision` extras, no longer ships fixes for it).
 - `pyro-ppl` is no longer a dependency of the core. The 0.9 API
-  (`cjd_flows.flows`, `transforms`, `distributions`, `explib`) needs the
-  `legacy` (or `experiments`) extra.
+  (`cjd_flows.flows`, `transforms`, `distributions`) needs the `legacy` extra.
 - `LULinear.log_prior` uses the exact prior scaling `σ / (h·w·√c)` for the
   diagonal so that the total log-determinant has standard deviation `σ`.
+
+### Removed
+
+- The YAML/Ray experiment framework `cjd_flows.explib` (config parser,
+  hyperparameter search, experiment datasets, TensorBoard visualization), the
+  experiment runner `scripts/` with its launchers and `dockerfile`, the paper
+  experiment configs in `experiments/` and the `experiments` extra. Paper experiments live in their own
+  repositories; the last state is tagged `archive/explib-final`. Use
+  `cjd_flows.evaluation` instead of `cjd_flows.explib.eval`.
+- Support for Python 3.10.
 
 ### Fixed (0.9 API)
 

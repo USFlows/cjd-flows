@@ -32,7 +32,7 @@ the latent level-set geometry intact.
 ```bash
 pip install cjd-flows                 # core: torch + numpy only
 pip install "cjd-flows[eval,onnx]"    # + scipy/sklearn/matplotlib, ONNX export
-pip install "cjd-flows[experiments]"  # + the YAML/Ray experiment framework and the legacy pyro API
+pip install "cjd-flows[legacy]"       # + the pyro-based 0.9 API
 ```
 
 For development (uses [uv](https://docs.astral.sh/uv/)):
@@ -197,13 +197,14 @@ into Markdown tables.
 ## Legacy API
 
 The pyro-based API of v0.9 (`cjd_flows.flows.USFlow`,
-`cjd_flows.transforms`, `cjd_flows.distributions`, `cjd_flows.explib`) is still
-available with the `[legacy]` / `[experiments]` extras, and its known bugs are
-fixed. New code should use the v1 API above.
+`cjd_flows.transforms`, `cjd_flows.distributions`) is still available with the
+`[legacy]` extra, and its known bugs are fixed. New code should use the v1 API
+above.
 
-```bash
-python scripts/run-experiment.py --config <config file> --report_dir <log dir>
-```
+The YAML/Ray experiment framework of v0.9 (`cjd_flows.explib`, `scripts/`,
+`experiments/`) was removed in 1.0. Experiments for papers live in their own
+repositories; the last state of the framework is tagged
+[`archive/explib-final`](https://github.com/USFlows/cjd-flows/tree/archive/explib-final).
 
 ## Citation
 

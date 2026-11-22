@@ -251,30 +251,6 @@ def test_radial_distribution_sample_shape_and_int_p(p):
     assert dist.log_prob(x).shape == (5,)
 
 
-# --------------------------------------------------------------------------- 6
-def test_explib_eval_energy_distance_and_norm():
-    pytest.importorskip("scipy")
-    pytest.importorskip("sklearn")
-    pytest.importorskip("matplotlib")
-    from cjd_flows.explib import eval as explib_eval
-
-    assert hasattr(explib_eval, "norm")  # was used without import
-    X = torch.rand(50, 3).double().numpy()
-    d = explib_eval.RadialFlowEvaluator._energy_distance(None, X, X)
-    assert math.isfinite(d) and abs(d) < 1e-6
-
-
-# --------------------------------------------------------------------------- 7
-def test_hyperopt_anomaly_detection_is_opt_in(monkeypatch):
-    pytest.importorskip("ray")
-    from cjd_flows.explib import hyperopt
-
-    monkeypatch.delenv("CJD_FLOWS_DETECT_ANOMALY", raising=False)
-    assert not hyperopt._detect_anomaly_requested()
-    monkeypatch.setenv("CJD_FLOWS_DETECT_ANOMALY", "1")
-    assert hyperopt._detect_anomaly_requested()
-
-
 # --------------------------------------------------------------------------- 8
 def test_scale_transform_init_and_jitter():
     t = ScaleTransform([DIM])

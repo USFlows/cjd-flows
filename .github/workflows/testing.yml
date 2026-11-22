@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +50,7 @@ jobs:
         run: uv run --no-sync python -c "import sys, cjd_flows.core; assert 'pyro' not in sys.modules"
       - name: Run tests
         # Legacy test modules that need pyro are skipped automatically
-        # (tests/cjd_flows/conftest.py, tests/explib/conftest.py).
+        # (tests/cjd_flows/conftest.py).
         run: uv run --no-sync pytest -m "not slow and not gpu" -n auto
 
   test-legacy:
@@ -67,7 +67,7 @@ jobs:
           uv venv
           uv pip install -e ".[legacy,eval]" --group dev
       - name: Run legacy tests
-        run: uv run --no-sync pytest -m "not slow and not gpu" tests/cjd_flows tests/explib
+        run: uv run --no-sync pytest -m "not slow and not gpu" tests/cjd_flows
 
   build:
     runs-on: ubuntu-latest
