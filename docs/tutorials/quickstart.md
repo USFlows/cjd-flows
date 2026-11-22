@@ -36,10 +36,16 @@ radial base with a monotone profile).
 ## Choosing the base
 
 `base` selects the base distribution (see {func}`~cjd_flows.models.make_base`):
-`"gaussian"` is a fixed standard normal; all other names give an Lp-radial base
-whose 1-D norm distribution is learned jointly with the flow, for example
-`"ggmix"` (mixture of generalized gammas), `"ggmix-monotone"`, `"spline"`,
-`"monotone"` or `"khinchine"`. The exponent of the norm is set with `p`:
+
+- fixed bases: `"gaussian"` (standard normal) and `"laplace"` (the
+  `p`-generalized normal, Laplace for `p = 1`);
+- learned single-centre Lp-radial bases, whose 1-D norm distribution is learned
+  jointly with the flow, for example `"ggmix"` (mixture of generalized gammas),
+  `"ggmix-monotone"`, `"spline"`, `"monotone"` or `"khinchine"`;
+- `"radial-mixture"`: several radial components with learnable centres (a
+  multi-modal latent instead of a single radial profile).
+
+The exponent of the norm is set with `p`:
 
 ```python
 flow = USFlow((2,), blocks=8, base="ggmix-monotone", p=1.0)   # L1-radial, monotone profile

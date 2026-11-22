@@ -9,11 +9,13 @@ A constant determinant gives three things:
 * **Exact, cheap likelihoods.** `log p(x) = log p_Z(f(x)) + C`, where `C` is a
   single learnable scalar.
 * **Density level-set preservation.** Data-space density level sets are exactly
-  the pre-images of latent level sets. With a radial base, the latent norm
-  ranks inputs by density, which gives faithful anomaly scores and verifiable
-  density constraints.
-* **Stable training.** Additive and volume-preserving layers do not suffer
-  from exploding or vanishing Jacobians.
+  the pre-images of latent level sets. With a radial base whose profile
+  decreases with the radius, the latent norm ranks inputs by density, which
+  gives faithful anomaly scores and verifiable density constraints.
+* **Constant volume change.** Every region of the data space is stretched by
+  the same factor, a single learnable scalar. (This does not bound the
+  conditioning of the flow: an additive coupling can still be an
+  ill-conditioned shear.)
 
 The library's main ingredient is the **learnable radial base distribution** of
 VeriFlow, first presented at AISoLA 2023 (Abu Zaid, Diekmann, Neider): an

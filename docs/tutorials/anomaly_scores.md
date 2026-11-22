@@ -1,7 +1,11 @@
 # Anomaly scores
 
-With a radial base, a uniformly scaling flow ranks inputs by density through
-the latent norm. {func}`~cjd_flows.scores.anomaly_scores` computes several
+With a radial base whose profile decreases with the radius, a uniformly
+scaling flow ranks inputs by density through the latent norm, so `latent_norm`
+and `nll` give the same ranking. For non-monotone profiles (e.g. the
+unconstrained `"ggmix"`) the two can differ; use a monotone base
+(`"ggmix-monotone"`, `"monotone"`, `"khinchine"`) when the latent norm should be
+the anomaly score. {func}`~cjd_flows.scores.anomaly_scores` computes several
 scores (higher = more anomalous) batch-wise:
 
 | Score | Definition | Needs |
@@ -9,7 +13,7 @@ scores (higher = more anomalous) batch-wise:
 | `nll` | $-\log p(x)$ | any base |
 | `latent_norm` | $\lVert f(x) - \mathrm{loc} \rVert_p$ | any base |
 | `typicality` | $-\log p_R(\lVert z \rVert)$ | radial base (or a fitted {class}`~cjd_flows.scores.TypicalityScorer`) |
-| `hdr` | mass of the latent region more likely than $z$; $F_R(\lVert z \rVert)$ for monotone profiles | radial base with a CDF |
+| `hdr` | radius CDF $F_R(\lVert z \rVert)$; for radially decreasing profiles this is the mass of the latent region more likely than $z$ (HDR p-value $= 1 -$ `hdr`) | radial base with a CDF |
 
 ```python
 import torch
@@ -21,7 +25,7 @@ x_train = make_toy("two_moons", 20_000, seed=0)
 x_in = make_toy("two_moons", 2_000, seed=1)       # normal test data
 x_out = 4 * torch.rand(2_000, 2) - 2               # anomalies: uniform on a box
 
-flow = USFlow((2,), blocks=8, base="ggmix")
+flow = USFlow((2,), blocks=8, base="ggmix-monotone")   # decreasing profile: norm ranks by density
 fit(flow, x_train, epochs=30, lr=1e-3)
 
 s_in = anomaly_scores(flow, x_in)
