@@ -148,6 +148,29 @@ latent representations by the data density.
 For the US flow, density decreases monotonically with the latent norm. For a
 non-US flow, high-density regions are skewed against the latent geometry.
 
+## Evaluation suite
+
+`cjd_flows.evaluation.RadialFlowEvaluator` (needs the `eval` extra) checks how
+well the latents of a trained flow match the radial structure of its base:
+
+- norm-distribution diagnostics (KS, Wasserstein, PP/QQ/KDE),
+- radiality diagnostics (sign symmetry and simplex-uniformity tests),
+- calibration-oriented latent-space analysis,
+- fine-grained mismatch diagnostics that help distinguish over- vs. under-approximation of density level sets.
+
+```python
+from cjd_flows.evaluation import RadialFlowEvaluator
+
+ev = RadialFlowEvaluator(flow, x_test)   # p, norm law and centre are read from the base
+ev.ks_norm_statistic()                   # latent norms vs. the base norm distribution
+ev.pp_plot_norms()
+ev.test_l1_radial_symmetry()             # L1 bases: sign symmetry + simplex uniformity
+```
+
+It works with v1 flows (radial or Gaussian base) and with the 0.9 flows.
+
+![Overview of the evaluation suite](https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/eval_suite.svg)
+
 ## Applications
 
 * **Density estimation** with exact likelihoods: `fit`, `evaluate_nll`,
@@ -242,8 +265,8 @@ GitHub citation support and downloadable formats:
 ## Acknowledgment
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/logos/baiaa-logo.svg">
-  <img src="https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/logos/baiaa-logo-black.svg" alt="Bavarian AI Act Accelerator">
+  <source media="(prefers-color-scheme: dark)" srcset="https://media.githubusercontent.com/media/USFlows/cjd-flows/main/docs/images/logos/baiaa-logo.svg">
+  <img src="https://media.githubusercontent.com/media/USFlows/cjd-flows/main/docs/images/logos/baiaa-logo-black.svg" alt="Bavarian AI Act Accelerator">
 </picture>
 
 The Bavarian AI Act Accelerator is a two-year project funded by the Bavarian

@@ -41,6 +41,7 @@ See `src/cjd_flows/core.py`:
 | `train.py` | `fit()` trainer: DataLoader, AdamW + warmup + cosine, EMA, grad clip, validation + early stopping, optional soft training / noise augmentation, AMP |
 | `data/` | Preprocessing (uniform dequantization, affine scaling, bpd), toy 2-D datasets, MAF tabular benchmarks, image datasets |
 | `scores.py` | Anomaly / OOD scores (NLL, latent norm, typicality, HDR p-value) and metrics (AUROC, AUPR, FPR@95) |
+| `evaluation.py` | `RadialFlowEvaluator`: latent norm-distribution and radiality diagnostics (KS, Wasserstein, PP/QQ/KDE, sign symmetry, simplex uniformity, HSIC) for v1 and 0.9 flows; moved from `explib/eval.py` |
 | `export.py` | ONNX export wrappers (log_prob / sample / forward / inverse), `to_affine_network` |
 | `models.py` | High-level builders (`USFlow`, presets) |
 
