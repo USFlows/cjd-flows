@@ -4,7 +4,8 @@ Runs a grid of (dataset x base x coupling x seed) configurations in a process
 pool and appends one JSON record per run to ``<out>/results.jsonl``.
 
 Suites: ``toy`` (bases x couplings), ``arch`` (couplings x mixing layers, incl. the
-affine reference without constant determinant), ``tabular``, ``smoke``.
+affine reference without constant determinant), ``tabular`` (MAF suite: additive,
+autoregressive and the affine reference x four bases), ``smoke``.
 
 Usage::
 
@@ -196,9 +197,10 @@ def tabular_grid(seeds):
     }
     specs = []
     for (ds, c), base, coup, seed in itertools.product(
-        cfg.items(), ["gaussian", "ggmix", "ggmix-monotone", "spline", "radial-mixture"], ["additive", "autoregressive"], seeds
+        cfg.items(), ["gaussian", "ggmix-monotone", "spline", "radial-mixture"], ["additive", "autoregressive", "affine"],
+        seeds,
     ):
-        specs.append(dict(dataset=ds, base=base, coupling=coup, seed=seed, threads=4, **c))
+        specs.append(dict(dataset=ds, base=base, coupling=coup, mixing="lu", seed=seed, threads=4, **c))
     return specs
 
 
