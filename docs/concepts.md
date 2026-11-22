@@ -25,7 +25,7 @@ All layers live in {mod}`cjd_flows.bijections`.
 | `LULinear` | free / 1 (`unit_det=True`) | ✓ | One-star (1×1) channel mixing; log-normal prior on the diagonal |
 | `HouseholderLinear`, `OrthogonalLinear` (Cayley / exp) | ±1 | ✓ | Isometric mixing, condition number 1 |
 | `ActNorm` | free / 1 (`zero_sum=True`) | ✓ | Data-dependent initialization |
-| `GlobalScale` | `D·log s` | ✓ | The single "uniform scaling" parameter |
+| `GlobalScale` | `s^D` | ✓ | The single "uniform scaling" parameter |
 | `Shift` | 1 | ✓ | Per-coordinate bias, initialized to centre the latents of the first batch |
 | `Squeeze`, `HaarWavelet`, `Patchify`, `Permutation` | ±1 | ✓ | Reshapes and orthonormal transforms |
 
@@ -35,9 +35,11 @@ consecutive linear layers for export.
 Conditioners ({mod}`cjd_flows.conditioners`) are `MLP`, `ConvNet` (1–3D,
 optionally gated), `MADE` and `JetConditioner` (ViT with adaLN-zero context).
 All of them zero-initialize their output, so every coupling starts as the
-identity. They optionally use spectral normalization, and
-`lipschitz_upper_bound` then gives certified bi-Lipschitz bounds `1 + L` for
-additive couplings.
+identity. They optionally use spectral normalization. For `MLP` and ungated
+`ConvNet` conditioners without normalization layers, `lipschitz_upper_bound`
+gives an upper bound `L` on the conditioner's Lipschitz constant (evaluation
+mode), and hence bi-Lipschitz bounds `1 + L` for additive couplings; `MADE` and
+`JetConditioner` are not supported.
 
 ## Base distributions
 
@@ -58,11 +60,20 @@ valid for any $p > 0$, with a learnable norm distribution $p_R$:
 | `StudentTNorm` | monotone | heavy tails |
 | `LogNormalMixture` | **never monotone** ("shell") | kept for compatibility |
 
-`RadialMixture` places several radial components at learnable centres. It is
-the only base that can change the number of modes, which no volume-preserving
-flow can do. {mod}`cjd_flows.radial.levelsets` provides `udl_radius`,
-`hdr_pvalue`, `density_threshold_radius` and `udl_intervals`: the exact latent
-level sets that verification and calibrated anomaly scores need.
+Because the determinant is constant, the flow maps the modes of the base one to
+one onto the modes of the data density, so their number is set by the base. A
+single-centre radial base has its maxima at the centre (decreasing profile) or
+on a shell around it; `RadialMixture` places several radial components at
+independently located, learnable centres.
+
+{mod}`cjd_flows.radial.levelsets` computes the latent level sets that
+verification and calibrated anomaly scores need. `udl_radius`,
+`density_threshold_radius` and, for monotone profiles, `hdr_pvalue` are exact up
+to floating-point and root-finding precision. `udl_intervals`, and `hdr_pvalue`
+for non-monotone ("shell") profiles, are computed on a log-radius grid
+(65,536 cells by default) and are numerical approximations: narrow shells or
+threshold crossings inside a grid cell can be missed. Use monotone profiles
+when the level sets must be exact, e.g. for verification.
 
 **Why monotone profiles matter.** Upper density level sets are norm *balls*
 (polytopes for p = 1 and p = ∞) only if the radial profile is decreasing.
