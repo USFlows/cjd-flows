@@ -57,6 +57,8 @@ pyro-based API of 0.9 stays available as an optional extra.
 - **Testing helpers** (`cjd_flows.testing`): `check_bijection`,
   `jacobian_log_abs_det` and `check_flow_normalization` for custom layers.
 - Benchmark scripts in `benchmarks/` (density suite and a CIFAR-10 study).
+- Documentation site (Sphinx): API reference and tutorials, built in CI and
+  published to <https://usflows.github.io/cjd-flows/>.
 
 ### Changed
 

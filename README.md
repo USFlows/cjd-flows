@@ -9,23 +9,30 @@ A constant determinant gives three things:
 * **Exact, cheap likelihoods.** `log p(x) = log p_Z(f(x)) + C`, where `C` is a
   single learnable scalar.
 * **Density level-set preservation.** Data-space density level sets are exactly
-  the pre-images of latent level sets. With a radial base, the latent norm
-  ranks inputs by density, which gives faithful anomaly scores and verifiable
-  density constraints.
-* **Stable training.** Additive and volume-preserving layers do not suffer
-  from exploding or vanishing Jacobians.
+  the pre-images of latent level sets. With a radial base whose profile
+  decreases with the radius, the latent norm ranks inputs by density, which
+  gives faithful anomaly scores and verifiable density constraints.
+* **Constant volume change.** Every region of the data space is stretched by
+  the same factor, a single learnable scalar. (This does not bound the
+  conditioning of the flow: an additive coupling can still be an
+  ill-conditioned shear.)
 
 The library's main ingredient is the **learnable radial base distribution** of
 VeriFlow, first presented at AISoLA 2023 (Abu Zaid, Diekmann, Neider): an
 Lp-radial base whose 1-D norm distribution is learned jointly with the flow. A
-uniformly scaling flow cannot change the distribution of density values of its
-base, so with a fixed base its expressivity is limited (Draxler et al., ICML
-2024, prove that volume-preserving flows with a fixed base are not universal).
-The learnable norm distribution removes exactly this limitation while keeping
-the latent level-set geometry intact.
+uniformly scaling flow changes the density values of its base only by one
+global factor (its constant Jacobian determinant), so with a fixed base its
+expressivity is limited (Draxler et al., ICML 2024, prove that
+volume-preserving flows with a fixed base are not universal). The learnable
+norm distribution removes exactly this limitation while keeping the latent
+level-set geometry intact.
 
 ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
 ![ONNX](https://img.shields.io/badge/ONNX-005CED?logo=onnx&logoColor=white)
+[![Docs](https://github.com/USFlows/cjd-flows/actions/workflows/docs.yml/badge.svg)](https://usflows.github.io/cjd-flows/)
+
+**Documentation:** <https://usflows.github.io/cjd-flows/> (API reference and
+tutorials).
 
 ## Installation
 
@@ -115,7 +122,7 @@ your own architecture are loaded into a model you construct:
 | `LULinear` | free / 1 (`unit_det=True`) | ✓ | One-star (1×1) channel mixing; log-normal prior on the diagonal |
 | `HouseholderLinear`, `OrthogonalLinear` (Cayley / exp) | ±1 | ✓ | Isometric mixing, condition number 1 |
 | `ActNorm` | free / 1 (`zero_sum=True`) | ✓ | Data-dependent initialization |
-| `GlobalScale` | `D·log s` | ✓ | The single "uniform scaling" parameter |
+| `GlobalScale` | `s^D` | ✓ | The single "uniform scaling" parameter |
 | `Shift` | 1 | ✓ | Per-coordinate bias, initialized to centre the latents of the first batch |
 | `Squeeze`, `HaarWavelet`, `Patchify`, `Permutation` | ±1 | ✓ | Reshapes and orthonormal transforms |
 
@@ -125,8 +132,11 @@ consecutive linear layers for export.
 Conditioners (`cjd_flows.conditioners`) are `MLP`, `ConvNet` (1–3D, optionally
 gated), `MADE` and `JetConditioner` (ViT with adaLN-zero context). All of them
 zero-initialize their output, so every coupling starts as the identity. They
-optionally use spectral normalization, and `lipschitz_upper_bound` then gives
-certified bi-Lipschitz bounds `1 + L` for additive couplings.
+optionally use spectral normalization. For `MLP` and ungated `ConvNet`
+conditioners without normalization layers, `lipschitz_upper_bound` gives an
+upper bound `L` on the conditioner's Lipschitz constant (evaluation mode), and
+hence bi-Lipschitz bounds `1 + L` for additive couplings; `MADE` and
+`JetConditioner` are not supported.
 
 ### Base distributions (`cjd_flows.radial`)
 
@@ -142,11 +152,24 @@ An Lp-radial base is `p(z) = p_R(‖z‖_p) / (d V_p ‖z‖_p^{d-1})`, valid fo
 | `StudentTNorm` | monotone | heavy tails |
 | `LogNormalMixture` | **never monotone** ("shell") | kept for compatibility |
 
-`RadialMixture` places several radial components at learnable centres. It is
-the only base that can change the number of modes, which no volume-preserving
-flow can do. `cjd_flows.radial.levelsets` provides `udl_radius`,
-`hdr_pvalue`, `density_threshold_radius` and `udl_intervals`: the exact latent
-level sets that verification and calibrated anomaly scores need.
+Because the determinant is constant, the flow maps the modes of the base one to
+one onto the modes of the data density, so their number is set by the base. A
+single-centre radial base has its maxima at the centre (decreasing profile) or
+on a shell around it; `RadialMixture` places several radial components at
+independently located, learnable centres.
+
+`cjd_flows.radial.levelsets` computes the latent level sets that verification
+and calibrated anomaly scores need. For monotone profiles the level sets are
+exactly norm balls; only their radii and masses are computed numerically
+(`udl_radius`, `density_threshold_radius`, `hdr_pvalue`). The accuracy depends
+on the norm distribution: the generalized-gamma family has an analytic CDF
+(quantiles by bisection), while `KhinchineNorm` and `MonotoneProfileNorm`
+use quadrature or tabulated CDFs on a grid (`KhinchineNorm`: about 1e-5 in
+`log p` with the default grid). For non-monotone ("shell") profiles,
+`udl_intervals` and `hdr_pvalue` classify a log-radius grid (65,536 cells by
+default) and can miss narrow shells or threshold crossings inside a cell. For
+certified verification, use a monotone profile and account for the numerical
+error of the radius, or prefer a norm law with an analytic CDF.
 
 **Why monotone profiles matter.** Upper density level sets are norm *balls*
 (polytopes for p = 1 and p = ∞) only if the radial profile is decreasing.
@@ -156,16 +179,20 @@ approximation sense.
 
 ## Latent-space alignment
 
-Uniformly scaling flows preserve upper density level sets: data-space density
-level sets map onto latent norm level sets. The 2D GMM example below colours
-latent representations by the data density.
+Uniformly scaling flows preserve density level sets:
+`{x : p(x) ≥ t} = f⁻¹({z : p_Z(z) ≥ t / |det J_f|})`, i.e. only the threshold is
+rescaled by the global volume factor. For a radial base the latent level sets
+are norm spheres, and the upper level sets are norm balls when the radial
+profile decreases. The 2D GMM example below colours latent representations by
+the data density.
 
 | US flow | Non-US flow |
 |---|---|
 | ![US](https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/contour_latent_2d_gmm_US_density.png) | ![Non-US](https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/contour_latent_2d_gmm_Non-US_density.png) |
 
-For the US flow, density decreases monotonically with the latent norm. For a
-non-US flow, high-density regions are skewed against the latent geometry.
+With a radially decreasing base, the density of a US flow decreases
+monotonically with the latent norm (left). For a non-US flow, high-density
+regions are skewed against the latent geometry (right).
 
 ## Evaluation suite
 

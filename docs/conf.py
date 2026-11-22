@@ -1,57 +1,88 @@
-# Configuration file for the Sphinx documentation builder.
-#
-# This file only contains a selection of the most common options. For a full
-# list see the documentation:
-# https://www.sphinx-doc.org/en/master/usage/configuration.html
+"""Sphinx configuration for the CJD-Flows documentation.
 
-# -- Path setup --------------------------------------------------------------
+Build locally with::
 
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-#
-# import os
-# import sys
-# sys.path.insert(0, os.path.abspath('.'))
+    pip install -e ".[docs,eval,onnx]"
+    sphinx-build -W --keep-going -b html docs docs/_build/html
+"""
 
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+
+import cjd_flows  # noqa: E402
 
 # -- Project information -----------------------------------------------------
 
-project = 'CJD-Flows'
-copyright = '2023, Transferlab, appliedAI Institute for Europe'
-author = 'Faried Abu Zaid'
-
-# The full version, including alpha/beta/rc tags
-release = '1.0'
-
+project = "CJD-Flows"
+copyright = "2023–2026, the USFlows contributors; originally developed at the TransferLab, appliedAI Institute for Europe"
+author = "Faried Abu Zaid"
+release = cjd_flows.__version__
+version = ".".join(release.split(".")[:2])
 
 # -- General configuration ---------------------------------------------------
 
-# Add any Sphinx extension module names here, as strings. They can be
-# extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
-# ones.
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.napoleon'
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",  # before sphinx_autodoc_typehints
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.viewcode",
+    "sphinx.ext.mathjax",
+    "sphinx_autodoc_typehints",
+    "sphinx_copybutton",
+    "myst_parser",
 ]
 
-# Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
+root_doc = "index"
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
-# List of patterns, relative to source directory, that match files and
-# directories to ignore when looking for source files.
-# This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+# -- autodoc / napoleon / typehints ------------------------------------------
 
+autodoc_default_options = {
+    "members": True,
+    "member-order": "bysource",
+    "show-inheritance": True,
+}
+autodoc_class_signature = "separated"
+autodoc_member_order = "bysource"
+autodoc_typehints = "description"
+autodoc_preserve_defaults = True
+# optional dependencies that may be missing when the docs are built
+autodoc_mock_imports = ["pyro"]
 
-# -- Options for HTML output -------------------------------------------------
+napoleon_google_docstring = True
+napoleon_numpy_docstring = False
+napoleon_use_rtype = False
+napoleon_attr_annotations = True
 
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-#
-html_theme = 'alabaster'
+typehints_use_signature = False
+typehints_use_signature_return = False
+always_document_param_types = False
+typehints_defaults = None
 
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+# -- intersphinx -------------------------------------------------------------
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "torch": ("https://docs.pytorch.org/docs/stable/", None),
+}
+intersphinx_timeout = 30
+
+# -- MyST --------------------------------------------------------------------
+
+myst_enable_extensions = ["colon_fence", "dollarmath"]
+myst_heading_anchors = 3
+
+# -- HTML --------------------------------------------------------------------
+
+html_theme = "furo"
+html_title = f"CJD-Flows {release}"
+html_static_path: list = []
+html_theme_options = {
+    "source_repository": "https://github.com/USFlows/cjd-flows",
+    "source_branch": "main",
+    "source_directory": "docs/",
+}
