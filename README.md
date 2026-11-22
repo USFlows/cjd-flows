@@ -1,16 +1,209 @@
 # CJD-Flows: Constant-Jacobian-Determinant Flows
 
-CJD-Flows is a Python library for building and evaluating flow-based density estimators with a guaranteed constant Jacobian determinant. In this repository, we use **US flows** (uniformly scaling flows) as the term for the broader model class, and **CJD-Flows** as the library name.
+CJD-Flows is a PyTorch library of normalizing flows whose Jacobian determinant
+is **constant**: `log|det J_f(x)|` does not depend on `x`. We call this model
+class **uniformly scaling flows (US flows)**.
 
-The library is designed for applications that benefit from stable training, exact likelihoods, and predictable latent level-set geometry.
+A constant determinant gives three things:
 
-## Used libraries
+* **Exact, cheap likelihoods.** `log p(x) = log p_Z(f(x)) + C`, where `C` is a
+  single learnable scalar.
+* **Density level-set preservation.** Data-space density level sets are exactly
+  the pre-images of latent level sets. With a radial base, the latent norm
+  ranks inputs by density, which gives faithful anomaly scores and verifiable
+  density constraints.
+* **Stable training.** Additive and volume-preserving layers do not suffer
+  from exploding or vanishing Jacobians.
+
+The library's main ingredient is the **learnable radial base distribution** of
+VeriFlow, first presented at AISoLA 2023 (Abu Zaid, Diekmann, Neider): an
+Lp-radial base whose 1-D norm distribution is learned jointly with the flow. A
+uniformly scaling flow cannot change the distribution of density values of its
+base, so with a fixed base its expressivity is limited (Draxler et al., ICML
+2024, prove that volume-preserving flows with a fixed base are not universal).
+The learnable norm distribution removes exactly this limitation while keeping
+the latent level-set geometry intact.
 
 ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
-![Pyro](https://img.shields.io/badge/Pyro-Flow%20Modeling-4B8BBE)
-![NumPy](https://img.shields.io/badge/NumPy-013243?logo=numpy&logoColor=white)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-F7931E?logo=scikitlearn&logoColor=white)
 ![ONNX](https://img.shields.io/badge/ONNX-005CED?logo=onnx&logoColor=white)
+
+## Installation
+
+```bash
+pip install cjd-flows                 # core: torch + numpy only
+pip install "cjd-flows[eval,onnx]"    # + scipy/sklearn/matplotlib, ONNX export
+pip install "cjd-flows[experiments]"  # + the YAML/Ray experiment framework and the legacy pyro API
+```
+
+For development (uses [uv](https://docs.astral.sh/uv/)):
+
+```bash
+uv sync                      # dev environment incl. pytest/ruff
+uv run pytest -m "not slow"
+```
+
+## Quickstart
+
+```python
+import torch
+from cjd_flows import USFlow, fit
+from cjd_flows.data.toy import make_toy
+
+x = make_toy("two_moons", 20_000)
+flow = USFlow((2,), blocks=8, base="ggmix")      # learnable radial base (generalized-gamma mixture)
+fit(flow, x, epochs=30, lr=1e-3, ema_decay=0.999)
+
+flow.log_prob(x[:5])          # exact log-density
+flow.sample((1000,))          # samples
+flow.log_abs_det()            # THE Jacobian log-determinant -- one scalar for all inputs
+```
+
+Images use the same builder (ConvNet conditioners by default):
+
+```python
+flow = USFlow((1, 28, 28), blocks=8, hidden=(128, 128), base="ggmix")
+```
+
+and a verification-friendly preset gives piecewise-affine flows with an L1-radial
+base whose density level sets are polytopes:
+
+```python
+from cjd_flows import VeriFlow
+flow = VeriFlow((1, 10, 10))           # ReLU conditioners, adjoint LU blocks, monotone L1 base
+assert flow.is_piecewise_affine()
+```
+
+## Core concepts
+
+| Concept | API |
+|---|---|
+| Bijection contract | `Bijection.forward(x, context) -> z` (data → latent), `.inverse(z, context)`, `.log_abs_det()` returns a 0-dim tensor that is **constant in x** |
+| Composition | `Chain(*bijections)`, `b.inv` |
+| Flow | `Flow(bijection, base)`: `log_prob`, `sample`, `rsample`, `transform`, `generate`, `log_abs_det` |
+| Training | `cjd_flows.fit(...)`: AdamW, warmup + cosine, EMA, validation and early stopping, bf16, noise augmentation and soft training |
+| Testing | `cjd_flows.testing.check_bijection(layer, x)`: inverse, log-det vs autograd, constancy and gradients for your own layers |
+
+### Building blocks (`cjd_flows.bijections`)
+
+| Block | Determinant | Piecewise affine* | Notes |
+|---|---|---|---|
+| `SplitAdditiveCoupling` | 1 | ✓ | NICE/Jet-style split (channel, checkerboard, row/col, random) |
+| `MaskedAdditiveCoupling` | 1 | ✓ | Masked formulation of the original USFlows |
+| `GINCoupling` | 1 | ✗ | Affine coupling with zero-sum, bounded log-scale (Sorrenson et al. 2020) |
+| `ShiftAutoregressive` | 1 | ✓ | MADE shifts: more expressive than coupling; inverse is sequential |
+| `MaskedConvAutoregressive` | 1 | ✓ | PixelCNN-style shift layer (experimental) |
+| `TransformerAutoregressive` | 1 | ✗ | Causal transformer over tokens (TarFlow-style); shift or zero-sum scale + shift; KV-cached inverse |
+| `LULinear` | free / 1 (`unit_det=True`) | ✓ | One-star (1×1) channel mixing; log-normal prior on the diagonal |
+| `HouseholderLinear`, `OrthogonalLinear` (Cayley / exp) | ±1 | ✓ | Isometric mixing, condition number 1 |
+| `ActNorm` | free / 1 (`zero_sum=True`) | ✓ | Data-dependent initialization |
+| `GlobalScale` | `D·log s` | ✓ | The single "uniform scaling" parameter |
+| `Shift` | 1 | ✓ | Per-coordinate bias, initialized to centre the latents of the first batch |
+| `Squeeze`, `HaarWavelet`, `Patchify`, `Permutation` | ±1 | ✓ | Reshapes and orthonormal transforms |
+
+\*Given piecewise-affine (ReLU) conditioners. `merge_linear` collapses
+consecutive linear layers for export.
+
+Conditioners (`cjd_flows.conditioners`) are `MLP`, `ConvNet` (1–3D, optionally
+gated), `MADE` and `JetConditioner` (ViT with adaLN-zero context). All of them
+zero-initialize their output, so every coupling starts as the identity. They
+optionally use spectral normalization, and `lipschitz_upper_bound` then gives
+certified bi-Lipschitz bounds `1 + L` for additive couplings.
+
+### Base distributions (`cjd_flows.radial`)
+
+An Lp-radial base is `p(z) = p_R(‖z‖_p) / (d V_p ‖z‖_p^{d-1})`, valid for any
+`p > 0`, with a learnable norm distribution `p_R`:
+
+| Norm distribution | Radial profile | Notes |
+|---|---|---|
+| `GeneralizedGamma(Mixture)` | monotone iff `a ≤ d` (`monotone=True` ties `a = d`) | contains Gamma, Weibull, Chi and the p-generalized normal |
+| `KhinchineNorm` | always monotone | `R = C·U^{1/d}`: every radially decreasing density is a mixture of uniform balls |
+| `MonotoneProfileNorm` | always monotone | `−log h` is a learnable increasing function |
+| `SplineNorm` | flexible | rational-quadratic spline on the standardized log-radius |
+| `StudentTNorm` | monotone | heavy tails |
+| `LogNormalMixture` | **never monotone** ("shell") | kept for compatibility |
+
+`RadialMixture` places several radial components at learnable centres. It is
+the only base that can change the number of modes, which no volume-preserving
+flow can do. `cjd_flows.radial.levelsets` provides `udl_radius`,
+`hdr_pvalue`, `density_threshold_radius` and `udl_intervals`: the exact latent
+level sets that verification and calibrated anomaly scores need.
+
+**Why monotone profiles matter.** Upper density level sets are norm *balls*
+(polytopes for p = 1 and p = ∞) only if the radial profile is decreasing.
+LogNormal norm distributions, for example, produce ring-shaped level sets. By
+rearrangement theory, monotone profiles lose no expressivity in the
+approximation sense.
+
+## Latent-space alignment
+
+Uniformly scaling flows preserve upper density level sets: data-space density
+level sets map onto latent norm level sets. The 2D GMM example below colours
+latent representations by the data density.
+
+| US flow | Non-US flow |
+|---|---|
+| ![US](https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/contour_latent_2d_gmm_US_density.png) | ![Non-US](https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/contour_latent_2d_gmm_Non-US_density.png) |
+
+For the US flow, density decreases monotonically with the latent norm. For a
+non-US flow, high-density regions are skewed against the latent geometry.
+
+## Evaluation suite
+
+`cjd_flows.evaluation.RadialFlowEvaluator` (needs the `eval` extra) checks how
+well the latents of a trained flow match the radial structure of its base:
+
+- norm-distribution diagnostics (KS, Wasserstein, PP/QQ/KDE),
+- radiality diagnostics (sign symmetry and simplex-uniformity tests),
+- calibration-oriented latent-space analysis,
+- fine-grained mismatch diagnostics that help distinguish over- vs. under-approximation of density level sets.
+
+```python
+from cjd_flows.evaluation import RadialFlowEvaluator
+
+ev = RadialFlowEvaluator(flow, x_test)   # p, norm law and centre are read from the base
+ev.ks_norm_statistic()                   # latent norms vs. the base norm distribution
+ev.pp_plot_norms()
+ev.test_l1_radial_symmetry()             # L1 bases: sign symmetry + simplex uniformity
+```
+
+It works with v1 flows (radial or Gaussian base) and with the 0.9 flows.
+
+![Overview of the evaluation suite](https://raw.githubusercontent.com/USFlows/cjd-flows/main/docs/images/eval_suite.svg)
+
+## Applications
+
+* **Density estimation** with exact likelihoods: `fit`, `evaluate_nll`,
+  bits/dim utilities in `cjd_flows.data.preprocess`. Affine preprocessing keeps
+  the constant determinant; logit preprocessing does not.
+* **Anomaly / OOD detection**: `cjd_flows.scores.anomaly_scores` returns NLL,
+  latent norm, typicality `−log p_R(‖z‖)` and the HDR p-value, together with
+  AUROC, AUPR and FPR@95 metrics. Uniformly scaling flows for one-class
+  classification are studied in Abu Zaid et al. (2025),
+  [arXiv:2510.09452](https://arxiv.org/abs/2510.09452).
+* **Neural network verification** (VeriFlow): train a piecewise-affine US flow
+  as a proxy density, take a latent upper density level set, which is a norm
+  ball, and verify properties over its image. `cjd_flows.export.to_onnx`
+  exports `log_prob` / `forward` / `inverse` graphs.
+
+## Benchmarks
+
+`benchmarks/` contains the scripts used to evaluate the library: a CPU density
+suite (`benchmarks/density/run.py`: toy 2-D data, the asymmetric GMM of the USF
+paper and the MAF tabular suite) and a CIFAR-10 study (`benchmarks/cifar/`).
+Run outputs go to `benchmarks/runs/`; `benchmarks/report.py` aggregates them
+into Markdown tables.
+
+## Legacy API
+
+The pyro-based API of v0.9 (`cjd_flows.flows.USFlow`,
+`cjd_flows.transforms`, `cjd_flows.distributions`, `cjd_flows.explib`) is still
+available with the `[legacy]` / `[experiments]` extras, and its known bugs are
+fixed. New code should use the v1 API above.
+
+```bash
+python scripts/run-experiment.py --config <config file> --report_dir <log dir>
+```
 
 ## Citation
 
@@ -18,10 +211,15 @@ If you use this library, please cite the VeriFlow paper:
 
 > Zaid, F. A., Neider, D., and Yalciner, M. (2026). VeriFlow: Modeling Distributions for Neural Network Verification. *Proceedings of the AAAI Conference on Artificial Intelligence*, 40(33), 28050-28058. https://doi.org/10.1609/aaai.v40i33.40030
 
+For uniformly scaling flows in anomaly detection and one-class classification,
+please also cite:
+
+> Abu Zaid, F., Katzke, T., Müller, E., and Neider, D. (2025). On Uniformly Scaling Flows: A Density-Aligned Approach to Deep One-Class Classification. arXiv:2510.09452. https://arxiv.org/abs/2510.09452
+
 GitHub citation support and downloadable formats:
 
-- [`CITATION.cff`](CITATION.cff) (for GitHub's "Cite this repository" widget)
-- [`CITATION.bib`](CITATION.bib) (downloadable BibTeX)
+- [`CITATION.cff`](https://github.com/USFlows/cjd-flows/blob/main/CITATION.cff) (for GitHub's "Cite this repository" widget)
+- [`CITATION.bib`](https://github.com/USFlows/cjd-flows/blob/main/CITATION.bib) (downloadable BibTeX)
 
 <details>
 <summary>BibTeX</summary>
@@ -39,123 +237,36 @@ GitHub citation support and downloadable formats:
   doi     = {10.1609/aaai.v40i33.40030},
   url     = {https://ojs.aaai.org/index.php/AAAI/article/view/40030}
 }
+
+@misc{AbuZaid_Katzke_Mueller_Neider_2025,
+  title         = {On Uniformly Scaling Flows: A Density-Aligned Approach to Deep One-Class Classification},
+  author        = {Abu Zaid, Faried and Katzke, Tim and M{\"u}ller, Emmanuel and Neider, Daniel},
+  year          = {2025},
+  eprint        = {2510.09452},
+  archivePrefix = {arXiv},
+  url           = {https://arxiv.org/abs/2510.09452}
+}
 ```
 
 </details>
 
-## Core features
+## References
 
-- Exact and efficient `log_prob` evaluation and sampling.
-- Uniformly scaling architectures with constant Jacobian determinant.
-- Piecewise-affine behavior for additive-coupling architectures with (leaky-)ReLU conditioners.
-- UDL-preserving structure, enabling interpretable level-set mappings between latent and data spaces.
-- Scalable conditioner networks, from piecewise-affine CNNs/MLPs to a Jet-style vision transformer with a global receptive field.
-- ONNX export support for inference graphs (`log_prob` and sampling).
-
-## Latent-space alignment
-
-Uniformly scaling flows preserve upper density level sets: data-space density level
-sets map onto latent norm level sets. The 2D GMM example below shows latent
-representations colored by the data density. For the US flow (left), the density
-decreases monotonically with the latent norm and aligns with the concentric level
-sets of the base distribution. For a non-US flow (right), high-density regions are
-skewed against the latent level-set geometry, so latent norms carry no reliable
-density information.
-
-This alignment is what makes latent upper density level sets (UDLs) meaningful
-proxies for data-space density level sets — the basis for the verification.
-
-## Architecture overview
-
-CJD-Flows provides a modular implementation of US-flow components:
-
-- Flow models and building blocks in `src/cjd_flows/flows.py`.
-- Affine and coupling transforms in `src/cjd_flows/transforms.py`.
-- Conditioner networks in `src/cjd_flows/networks.py`.
-- Flexible base distributions in `src/cjd_flows/distributions.py`, including radial distributions for `L1`, `L2`, and `Linf` geometries.
-
-A key component is the **learnable radial norm distribution** (including mixture families), which closes an important expressivity gap for uniformly scaling flows while keeping latent geometry controllable.
-
-### Conditioners
-
-Additive couplings have unit Jacobian determinant *regardless of the conditioner*,
-so arbitrary modeling capacity can be spent on the conditioner network without
-losing the constant-Jacobian-determinant property. The library provides:
-
-| Conditioner | Input topology | Piecewise affine |
-|---|---|---|
-| `ConvNet` / `CondConvNet` | vector, 1–3D spatial | with (leaky-)ReLU nonlinearity |
-| `JetConditioner` | vector, 1–3D spatial, sequences | no |
-
-`JetConditioner` is a scalable ViT-style transformer conditioner following the Jet
-architecture (Kolesnikov et al., 2024): patchified tokens, pre-LN attention blocks
-with QK-normalization, and a zero-initialized output head so every coupling layer
-starts as the identity. All linear maps act independently per token; self-attention
-is the only cross-token operation and provides a global receptive field in a single
-coupling layer. Context variables (e.g. the soft-training noise scale) are injected
-via adaLN-zero modulation. The trunk is domain-agnostic: sequence data is supported
-through `in_dims=[C, L]` with optional causal attention and padding masks
-(sequence length is fixed at construction).
-
-Note on piecewise affinity: with (leaky-)ReLU nonlinearities, the CNN/MLP
-conditioners keep the whole flow piecewise affine, which enables exact,
-SMT/MILP-based verification. The transformer conditioner is smooth rather than
-piecewise affine (softmax attention, GELU, LayerNorm), so it is out of reach for
-exact SMT encodings; abstract-interpretation-based verifiers such as
-alpha-beta-CROWN, however, handle transformer architectures via bound propagation,
-so verification workflows remain possible. It is also the natural choice for
-density estimation and anomaly detection, where no verifier is involved.
-
-## Evaluation suite
-
-The evaluation module in `src/cjd_flows/explib/eval.py` is tailored to radial-base US flows and includes:
-
-- norm-distribution diagnostics (KS, Wasserstein, PP/QQ/KDE),
-- radiality diagnostics (sign symmetry and simplex-uniformity tests),
-- calibration-oriented latent-space analysis,
-- fine-grained mismatch diagnostics that help distinguish over- vs. under-approximation of density level sets.
-
-![Overview of the evaluation suite](docs/images/eval_suite.svg)
-
-## Installation
-
-Assuming the package is published on PyPI:
-
-```bash
-pip install cjd-flows
-```
-
-## Applications
-
-CJD-Flows is intended as a general-purpose density-modeling library. We are currently expanding application examples and will add more soon.
-
-### Example: Neural network verification
-
-One current use case is verification with distribution-aware input restrictions:
-
-- train a US flow as a proxy density model of valid inputs,
-- define latent upper density level sets (UDLs),
-- map these sets through the flow to input-space constraints,
-- verify properties (e.g., robustness/fairness) over likely inputs.
-
-For verification workflows, the library also provides simplification methods that transform trained flow models into verifier-friendly fully connected or convolutional network forms to maximize compatibility with existing tools.
-
-This turns flow density estimates into practically usable constraints for symbolic and abstract verification pipelines.
-
-
-## Experiments
-
-The repository includes a lightweight YAML-based experiment framework.
-
-```bash
-python scripts/run-experiment.py --config <config file> --report_dir <log dir>
-```
+* Abu Zaid, Diekmann, Neider (2023). *Distribution-aware neuro-symbolic verification.* AISoLA 2023, LNCS, pp. 445–447.
+* Abu Zaid, Neider, Yalciner (2026). *VeriFlow: Modeling Distributions for Neural Network Verification.* AAAI.
+* Abu Zaid, Katzke, Müller, Neider (2025). *On Uniformly Scaling Flows: A Density-Aligned Approach to Deep One-Class Classification.* [arXiv:2510.09452](https://arxiv.org/abs/2510.09452).
+* Draxler, Wahl, Schnörr, Köthe (2024). *On the Universality of Volume-Preserving and Coupling-Based Normalizing Flows.* ICML.
+* Dinh, Krueger, Bengio (2015). *NICE: Non-linear Independent Components Estimation.*
+* Sorrenson, Rother, Köthe (2020). *Disentanglement by Nonlinear ICA with General Incompressible-flow Networks (GIN).* ICLR.
+* Kolesnikov, Susano Pinto, Tschannen (2024). *Jet: A Modern Transformer-Based Normalizing Flow.*
+* Zhai et al. (2025). *Normalizing Flows are Capable Generative Models (TarFlow).* ICML.
+* Kingma & Dhariwal (2018). *Glow.* NeurIPS. Papamakarios et al. (2017). *MAF.* NeurIPS.
 
 ## Acknowledgment
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/logos/baiaa-logo.svg">
-  <img src="docs/images/logos/baiaa-logo-black.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://media.githubusercontent.com/media/USFlows/cjd-flows/main/docs/images/logos/baiaa-logo.svg">
+  <img src="https://media.githubusercontent.com/media/USFlows/cjd-flows/main/docs/images/logos/baiaa-logo-black.svg" alt="Bavarian AI Act Accelerator">
 </picture>
 
 The Bavarian AI Act Accelerator is a two-year project funded by the Bavarian

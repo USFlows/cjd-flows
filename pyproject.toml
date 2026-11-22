@@ -1,87 +1,152 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
 [project]
 name = "cjd-flows"
-version = "0.9.0"
+version = "1.0.0.dev0"
 description = "Stable uniformly scaling normalizing flows with constant Jacobian determinant and radial base distributions."
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10"
 license = "BSD-3-Clause"
+license-files = ["LICENCE.md"]
 authors = [
-    {name = "Faried Abu Zaid", email = "fariedaz@gmail.com"},
+    { name = "Faried Abu Zaid", email = "fariedaz@gmail.com" },
 ]
 keywords = ["normalizing-flows", "density-estimation", "verification", "pytorch", "onnx"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+# The v1 core (cjd_flows.core, bijections, conditioners, radial, ...) only needs
+# torch and numpy. Everything else is optional and imported lazily.
 dependencies = [
-    "pyro-ppl>=1.8.5,<2.0.0",
-    "scikit-learn>=1.4.0,<2.0.0",
-    "ray>=2.47.1,<3.0",
+    "torch>=2.2",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# Pre-v1 pyro-based API: cjd_flows.flows / transforms / distributions.
+legacy = ["pyro-ppl>=1.9"]
+onnx = ["onnx>=1.16", "onnxscript>=0.1", "onnxruntime>=1.17"]
+eval = ["scipy>=1.11", "scikit-learn>=1.4", "matplotlib>=3.8"]
+vision = ["torchvision>=0.17"]
+# Everything needed by cjd_flows.explib and scripts/ (experiment runner).
+experiments = [
+    "cjd-flows[legacy,eval,vision,onnx]",
+    "ray[tune]>=2.47",
     # ray.train.v2 (imported via ray.tune) requires pydantic but ray does not
-    # declare it as a hard dependency
-    "pydantic>=2.5,<3.0",
-    "pandas>=2.2.3,<3.0",
-    "pyarrow>=18.0.0,<20.0.0",
-    "msgpack>=1.1.0,<2.0.0",
-    "cffi>=1.17.0,<2.0.0",
-    "pillow>=11.0.0,<12.0.0",
-    "grpcio>=1.68.0,<2.0.0",
-    "click>=8.1.6,<9.0.0",
-    "tensorboardx>=2.6.1,<3.0.0",
-    "idx2numpy>=1.2.3,<2.0.0",
-    "numpy>=2.1.0,<3.0",
-    "torch>=2.7.0,<2.8.0",
-    "torchaudio>=2.7.0,<2.8.0",
-    "fsspec>=2023.6.0,<2024.0.0",
-    "rise>=5.7.1,<6.0.0",
-    "onnx>=1.19.0,<2.0",
-    "matplotlib>=3.8.0,<4.0.0",
-    "sphinxcontrib-napoleon>=0.7,<0.8",
-    "jupyter-server>=2.10.1,<3.0.0",
-    "pyzmq>=26.2.0",
-    "plotly>=5.18.0,<6.0.0",
-    "kaleido==0.2.1",
-    "bayesian-optimization>=1.4.3,<2.0.0",
-    "tensorboard>=2.15.1,<3.0.0",
-    "torchvision>=0.22.0,<0.23.0",
-    "traitlets==5.9.0",
-    "sympy>=1.12,<2.0.0",
-    "seaborn>=0.13.2,<0.14.0",
+    # declare it as a hard dependency.
+    "pydantic>=2.5",
+    "pandas>=2.2",
+    "pyarrow>=18",
+    "pyyaml>=6.0",
+    "click>=8.1",
+    "tensorboard>=2.15",
+    "idx2numpy>=1.2.3",
+    "plotly>=5.18",
+    "pillow>=10",
+    "tqdm>=4.66",
+    "requests>=2.31",
+]
+docs = [
+    "sphinx>=7",
+    "furo",
+    "myst-parser",
+    "sphinx-copybutton",
+    "sphinx-autodoc-typehints",
 ]
 
 [project.urls]
+Homepage = "https://github.com/USFlows/cjd-flows"
 Repository = "https://github.com/USFlows/cjd-flows"
 Documentation = "https://github.com/USFlows/cjd-flows/tree/main/docs"
+Issues = "https://github.com/USFlows/cjd-flows/issues"
+Changelog = "https://github.com/USFlows/cjd-flows/blob/main/CHANGELOG.md"
 
-[tool.poetry]
-# src-layout: installs as the top-level `cjd_flows` package.
-# The experiment runner scripts are repo tooling and are not shipped.
-packages = [{include = "cjd_flows", from = "src"}]
-
-
-[tool.poetry.group.dev]
-optional = true
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.4.0"
-jupyter-contrib-nbextensions = "^0.7.0"
-lxml = ">=5.3.0,<6.0"
-jupyter = "^1.0.0"
-notebook = "6.4.8"
-spellchecker = "^0.4"
-tox = "^4.11.3"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.pytest.ini_options]
-testpaths = [
-    "tests",
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-xdist",
+    "ruff",
+    "hypothesis",
 ]
+
+# ---------------------------------------------------------------------------
+# Build: src layout, ship only the `cjd_flows` package. The experiment runner
+# scripts, experiment configs and docs are repository tooling.
+# ---------------------------------------------------------------------------
+[tool.hatch.build.targets.wheel]
+packages = ["src/cjd_flows"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/cjd_flows",
+    "/tests",
+    "/README.md",
+    "/LICENCE.md",
+    "/CITATION.cff",
+    "/CITATION.bib",
+    "/CHANGELOG.md",
+]
+exclude = ["__pycache__", "*.py[cod]"]
+
+# ---------------------------------------------------------------------------
+# uv
+# ---------------------------------------------------------------------------
+[tool.uv]
+# Install the dev group by default with `uv sync`.
+default-groups = ["dev"]
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]
+markers = [
+    "slow: long-running tests (deselect with '-m \"not slow\"')",
+    "gpu: tests that require a CUDA/ROCm device (deselect with '-m \"not gpu\"')",
+]
+
+# ---------------------------------------------------------------------------
+# Lint
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+extend-exclude = ["docs/conf.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    "E501",   # line length is left to the formatter (long docstring/URL lines are fine)
+    # Keep `typing.Optional/Union/Tuple/Sequence` annotations allowed (code base
+    # style; also valid on Python 3.10 without `from __future__ import annotations`).
+    "UP006", "UP007", "UP035", "UP045",
+    "B905",   # zip(strict=...) is not required
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cjd_flows"]
+
+[tool.ruff.lint.per-file-ignores]
+# Legacy (pre-v1) code is kept as-is apart from targeted bug fixes. Only the
+# pyflakes checks that indicate real bugs (undefined names, ...) stay active.
+"src/cjd_flows/{flows,transforms,distributions,networks,sophia,linalg,utils}.py" = [
+    "E", "I", "UP", "B", "F401", "F811", "F841", "F541",
+]
+"src/cjd_flows/explib/**" = ["E", "I", "UP", "B", "F401", "F811", "F841", "F541"]
+"scripts/**" = ["E", "I", "UP", "B", "F401", "F811", "F841", "F541"]
+"tests/cjd_flows/**" = ["E", "I", "UP", "B", "F401", "F811", "F841", "F541"]
+"tests/explib/**" = ["E", "I", "UP", "B", "F401", "F811", "F841", "F541"]

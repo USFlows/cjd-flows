@@ -1,376 +1,83 @@
+# ---------------------------------------------------------------------------
+# Experiment artefacts (reports, checkpoints, logs, plots)
+# ---------------------------------------------------------------------------
+/reports/
+/ray_results/
+/presentation/
+/runs/
+experiments/**/reports/
 *.csv
 *.onnx
 *.pkl
 *.pt
+*.pth
+*.ckpt
+*.npz
 *.png
 *.jpg
+*.pgf
 # documentation images are exempt from the global image ignore
 !docs/images/**/*.png
 !docs/images/**/*.jpg
-#
-.idea
+pylint.html
+
+# Downloaded datasets (top level only; ``src/cjd_flows/data`` is source code!)
+/data/
+/downloads/
+
+# Local configuration
 config_local.json
 config_local.yml
-temp
+/temp/
+.env
+.idea/
+.vscode/
 .DS_Store
 
-# Byte-compiled / optimized / DLL files
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-data/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
+# Packaging / build
+/build/
+/dist/
+/wheels/
 *.egg-info/
-.installed.cfg
 *.egg
+.eggs/
 MANIFEST
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+# Virtual environments (uv creates .venv)
+.venv/
+venv/
+env/
+ENV/
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
+# Test / coverage / type-checker / linter caches
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
 htmlcov/
 .tox/
 .nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
 *.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
 
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
+# Documentation builds
 docs/_build/
-docs/intro_bayesian_ml/
-notebooks/_build/
-notebooks/runs/
+/site/
 
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
+# Jupyter
+.ipynb_checkpoints/
 profile_default/
 ipython_config.py
 
-# pyenv
-.python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# reports
-pylint.html
-reports/mnist_basedist_comparison/0_mnist_nice/mnist_nice_exp_2023-12-20 16:47:10.715459_0afc8_00000_sample.png
-reports/mnist_basedist_comparison/0_mnist_nice/mnist_nice_exp_2023-12-20 16:50:51.500380_8e9b6_00000_sample.png
-reports/mnist_basedist_comparison/0_mnist_nice/mnist_nice_exp_2024-01-04 17:09:44.799642_af55d_00000_sample.png
-reports/mnist_basedist_comparison/0_mnist_nice/mnist_nice_exp_2024-01-04 17:14:32.586728_5ab0b_00000_sample.png
-reports/mnist_basedist_comparison/0_mnist_nice/mnist_nice_exp_2024-01-04 17:16:23.146629_9bc02_00000_sample.png
-reports/mnist_basedist_comparison/0_mnist_nice/mnist_nice_exp_2024-01-04 17:21:43.337147_5aa38_00000_sample.png
-reports/mnist_basedist_comparison/0_mnist_nice/mnist_nice_exp_2024-01-04 17:23:38.846625_9f726_00000_sample.png
-reports/mnist_basedist_comparison/0_mnist_nice/mnist_nice_exp_2024-01-04 17:24:54.285100_cc829_00000_sample.png
-reports/mnist_basedist_comparison/0_mnist_nice/mnist_nice_exp_2024-01-10 00:30:58.294181_25ad3_00000_sample.png
-reports/mnist_basedist_comparison/1_mnist_lu/mnist_lu_exp_2023-12-20 16:51:07.673777_96d42_00000_sample.png
-reports/mnist_basedist_comparison/1_mnist_lu/mnist_lu_exp_2024-01-04 17:10:04.242600_b879f_00000_sample.png
-reports/mnist_basedist_comparison/1_mnist_lu/mnist_lu_exp_2024-01-04 17:14:45.508138_601f8_00000_sample.png
-reports/mnist_basedist_comparison/1_mnist_lu/mnist_lu_exp_2024-01-04 17:16:30.521877_9eb70_00000_sample.png
-reports/mnist_basedist_comparison/1_mnist_lu/mnist_lu_exp_2024-01-04 17:21:52.556212_5ea93_00000_sample.png
-reports/mnist_basedist_comparison/1_mnist_lu/mnist_lu_exp_2024-01-04 17:23:49.564479_a4674_00000_sample.png
-reports/mnist_basedist_comparison/1_mnist_lu/mnist_lu_exp_2024-01-04 17:25:03.097069_d03b8_00000_sample.png
-reports/mnist_basedist_comparison/1_mnist_nice/mnist_nice_exp_2024-01-10 00:31:11.003965_2bf54_00000_sample.png
-reports/mnist_basedist_comparison/2_mnist_nice/mnist_nice_exp_2023-12-20 16:51:21.580586_9f1e2_00000_sample.png
-reports/mnist_basedist_comparison/2_mnist_nice/mnist_nice_exp_2024-01-04 17:10:17.072447_c01f8_00000_sample.png
-reports/mnist_basedist_comparison/2_mnist_nice/mnist_nice_exp_2024-01-04 17:14:54.356667_6565e_00000_sample.png
-reports/mnist_basedist_comparison/2_mnist_nice/mnist_nice_exp_2024-01-04 17:16:37.078679_a29f3_00000_sample.png
-presentation/flow-0.png
-presentation/flow-1.png
-presentation/flow-2.png
-presentation/flow-3.png
-presentation/flow-4.png
-presentation/flow-5.png
-presentation/flow-6.png
-presentation/flow-7.png
-presentation/flow-8.png
-presentation/flow-9.png
-presentation/flow-10.png
-presentation/flow-11.png
-presentation/flow-12.png
-presentation/flow-13.png
-presentation/flow-14.png
-presentation/flow-15.png
-presentation/flow-16.png
-presentation/flow-17.png
-presentation/flow-18.png
-presentation/flow-19.png
-presentation/flow-20.png
-presentation/flow-21.png
-presentation/flow-22.png
-presentation/flow-23.png
-presentation/flow-24.png
-presentation/flow-25.png
-presentation/flow-26.png
-presentation/flow-27.png
-presentation/flow-28.png
-presentation/flow-29.png
-presentation/flow-30.png
-presentation/flow-31.png
-presentation/flow-32.png
-presentation/flow-33.png
-presentation/flow-34.png
-presentation/flow-35.png
-presentation/flow-36.png
-presentation/flow-37.png
-presentation/flow-38.png
-presentation/flow-39.png
-presentation/flow-40.png
-presentation/flow-41.png
-presentation/flow-42.png
-presentation/flow-43.png
-presentation/flow-44.png
-presentation/flow-45.png
-presentation/flow-46.png
-presentation/flow-47.png
-presentation/flow-48.png
-presentation/flow-49.png
-presentation/flow-50.png
-presentation/flow-51.png
-presentation/flow-52.png
-presentation/flow-53.png
-presentation/flow-54.png
-presentation/flow-55.png
-presentation/flow-56.png
-presentation/flow-57.png
-presentation/flow-58.png
-presentation/flow-59.png
-presentation/flow-60.png
-presentation/flow-61.png
-presentation/flow-62.png
-presentation/flow-63.png
-presentation/flow-64.png
-presentation/flow-65.png
-presentation/flow-66.png
-presentation/flow-67.png
-presentation/flow-68.png
-presentation/flow-69.png
-presentation/flow-70.png
-presentation/flow-71.png
-presentation/flow-72.png
-presentation/flow-73.png
-presentation/flow-74.png
-presentation/flow-75.png
-presentation/flow-76.png
-presentation/flow-77.png
-presentation/flow-78.png
-presentation/flow-79.png
-presentation/flow-80.png
-presentation/flow-81.png
-presentation/flow-82.png
-presentation/flow-83.png
-presentation/flow-84.png
-presentation/flow-85.png
-presentation/flow-86.png
-presentation/flow-87.png
-presentation/flow-88.png
-presentation/flow-89.png
-presentation/flow-90.png
-presentation/flow-91.png
-presentation/flow-92.png
-presentation/flow-93.png
-presentation/flow-94.png
-presentation/flow-95.png
-presentation/flow-96.png
-presentation/flow-97.png
-presentation/flow-98.png
-presentation/flow-99.png
-presentation/flow-100.png
-presentation/flow-101.png
-presentation/flow-102.png
-presentation/flow-103.png
-presentation/flow-104.png
-presentation/flow-105.png
-presentation/flow-106.png
-presentation/flow-107.png
-presentation/flow-108.png
-presentation/flow-109.png
-presentation/flow-110.png
-presentation/flow-111.png
-presentation/flow-112.png
-presentation/flow-113.png
-presentation/flow-114.png
-presentation/flow-115.png
-presentation/flow-116.png
-presentation/flow-117.png
-presentation/flow-118.png
-presentation/flow-119.png
-presentation/flow-120.png
-presentation/flow-121.png
-presentation/flow-122.png
-presentation/flow-123.png
-presentation/flow-124.png
-presentation/flow-125.png
-presentation/flow-126.png
-presentation/flow-127.png
-presentation/flow-128.png
-presentation/flow-129.png
-presentation/flow-130.png
-presentation/flow-131.png
-presentation/flow-132.png
-presentation/flow-133.png
-presentation/flow-134.png
-presentation/flow-135.png
-presentation/flow-136.png
-presentation/flow-137.png
-presentation/flow-138.png
-presentation/flow-139.png
-presentation/flow-140.png
-presentation/flow-141.png
-presentation/flow-142.png
-presentation/flow-143.png
-presentation/flow-144.png
-presentation/flow-145.png
-presentation/flow-146.png
-presentation/flow-147.png
-presentation/flow-148.png
-presentation/flow-149.png
-presentation/flow-150.png
-presentation/flow-151.png
-presentation/flow-152.png
-presentation/flow-153.png
-presentation/flow-154.png
-presentation/flow-155.png
-presentation/flow-156.png
-presentation/flow-157.png
-presentation/flow-158.png
-presentation/flow-159.png
-presentation/flow-160.png
-presentation/flow-161.png
-presentation/flow-162.png
-presentation/flow-163.png
-presentation/flow-164.png
-presentation/flow-165.png
-presentation/flow-166.png
-presentation/flow-167.png
-presentation/flow-168.png
-presentation/flow-169.png
-presentation/flow-170.png
-presentation/flow-171.png
-presentation/flow-172.png
-presentation/flow-173.png
-presentation/flow-174.png
-presentation/flow-175.png
-presentation/flow-176.png
-presentation/flow-177.png
-presentation/flow-178.png
-presentation/flow-179.png
-presentation/flow-180.png
-presentation/flow-181.png
-presentation/flow-182.png
-presentation/flow-183.png
-presentation/flow-184.png
-presentation/flow-185.png
-presentation/flow-186.png
-presentation/flow-187.png
-presentation/flow-188.png
-presentation/flow-189.png
-presentation/flow-190.png
-presentation/flow-191.png
-presentation/flow-192.png
-presentation/flow-193.png
-presentation/flow-194.png
-experiments/mnist/reports/mnist_digit_basedist_comparison/0_mnist_0_basedist_comparison/mnist_0_basedist_comparison/0_mnist_nice_lu_laplace/mnist_nice_lu_laplace_exp_2024-01-06 18:58:36.001936_37cc5_00017_sample.png
-experiments/mnist/reports/mnist_digit_basedist_comparison/0_mnist_0_basedist_comparison/mnist_0_basedist_comparison/0_mnist_nice_lu_laplace/mnist_nice_lu_laplace_exp_2024-01-08 03:06:23.902165_8738b_00010_sample.png
-experiments/mnist/reports/mnist_digit_basedist_comparison/0_mnist_0_basedist_comparison/mnist_0_basedist_comparison/1_mnist_nice_lu_normal/mnist_nice_lu_normal_exp_2024-01-06 19:22:59.771866_9f15d_00001_sample.png
-experiments/mnist/reports/mnist_digit_basedist_comparison/0_mnist_0_basedist_comparison/mnist_0_basedist_comparison/1_mnist_nice_lu_normal/mnist_nice_lu_normal_exp_2024-01-08 05:27:48.015390_46fa1_00005_sample.png
-experiments/mnist/reports/mnist_digit_basedist_comparison/0_mnist_basedist_comparison/mnist_basedist_comparison/0_mnist_nice_lu_laplace/mnist_nice_lu_laplace_exp_2023-12-20 20:22:00.783099_0e11b_00002_sample.png
-experiments/mnist/reports/mnist_digit_basedist_comparison/0_mnist_basedist_comparison/mnist_basedist_comparison/0_mnist_nice_lu_laplace/mnist_nice_lu_laplace_exp_2023-12-20 21:59:04.388022_9d4af_00003_sample.png
-experiments/mnist/reports/mnist_digit_basedist_comparison/0_mnist_basedist_comparison/mnist_basedist_comparison/0_mnist_nice_lu_laplace/mnist_nice_lu_laplace_exp_2024-01-02 21:01:26.224898_b770b_00023_sample.png
-experiments/mnist/reports/mnist_digit_basedist_comparison/0_mnist_basedist_comparison/mnist_basedist_comparison/1_mnist_nice_lu_normal/mnist_nice_lu_normal_exp_2023-12-20 22:31:42.769287_2b18c_00001_sample.png
+# benchmark outputs
+/benchmarks/runs/

@@ -3,34 +3,93 @@ name: test
 on:
   pull_request:
   push:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Resolve torch / torchvision from the PyTorch CPU index for every
+  # `uv pip install` below (avoids the multi-GB CUDA wheels on the runners).
+  UV_TORCH_BACKEND: cpu
+  FORCE_COLOR: "1"
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Check that uv.lock is up to date
+        run: uv lock --check
+      - name: Ruff
+        # Legacy modules are only checked for real bugs (undefined names, ...),
+        # see [tool.ruff.lint.per-file-ignores] in pyproject.toml.
+        run: uvx ruff check --output-format=github .
+
   test:
+    name: test (core, python ${{ matrix.python-version }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ "ubuntu-latest" ]
-        # keep in sync with requires-python in pyproject.toml (>=3.10,<3.14)
-        python-version: [ "3.10", "3.11", "3.12", "3.13" ]
-    runs-on: ${{ matrix.os }}
+        python-version: ["3.10", "3.12", "3.13"]
+    runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-      - name: Set up python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-      # Pre-install CPU-only torch so the project install below does not pull
-      # the multi-GB CUDA wheels onto the runner.
-      - name: Install CPU-only torch
-        run: >
-          python -m pip install --index-url https://download.pytorch.org/whl/cpu
-          "torch>=2.7.0,<2.8.0"
-          "torchvision>=0.22.0,<0.23.0"
-          "torchaudio>=2.7.0,<2.8.0"
-      - name: Install project
-        run: python -m pip install -e . pytest
+          enable-cache: true
+      - name: Install (core dependencies only, CPU torch)
+        run: |
+          uv venv
+          uv pip install -e . --group dev
+      - name: Check that the core does not import pyro
+        run: uv run --no-sync python -c "import sys, cjd_flows.core; assert 'pyro' not in sys.modules"
       - name: Run tests
-        run: python -m pytest tests/
+        # Legacy test modules that need pyro are skipped automatically
+        # (tests/cjd_flows/conftest.py, tests/explib/conftest.py).
+        run: uv run --no-sync pytest -m "not slow and not gpu" -n auto
+
+  test-legacy:
+    name: test (legacy, python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install (legacy + eval extras, CPU torch)
+        run: |
+          uv venv
+          uv pip install -e ".[legacy,eval]" --group dev
+      - name: Run legacy tests
+        run: uv run --no-sync pytest -m "not slow and not gpu" tests/cjd_flows tests/explib
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Check wheel contents (only the cjd_flows package)
+        run: |
+          python - <<'EOF'
+          import glob, sys, zipfile
+          (wheel,) = glob.glob("dist/*.whl")
+          names = zipfile.ZipFile(wheel).namelist()
+          bad = [n for n in names if not (n.startswith("cjd_flows/") or ".dist-info/" in n)]
+          print("\n".join(names))
+          sys.exit(f"unexpected files in wheel: {bad}" if bad else 0)
+          EOF
+      - name: Install wheel into a fresh environment and import without pyro
+        run: |
+          uv venv /tmp/wheel-env
+          VIRTUAL_ENV=/tmp/wheel-env uv pip install dist/*.whl
+          /tmp/wheel-env/bin/python -c "import sys, cjd_flows, cjd_flows.core; assert 'pyro' not in sys.modules; print(cjd_flows.__file__)"

@@ -368,9 +368,9 @@ class RadialFlowEvaluator:
         d_yy = yy[:, None] + yy[None, :] - 2 * np.dot(Y, Y.T)
         d_xy = xx[:, None] + yy[None, :] - 2 * xy
         
-        term1 = np.sum(np.sqrt(d_xy)) / (n * m)
-        term2 = np.sum(np.sqrt(d_xx)) / (n * n)
-        term3 = np.sum(np.sqrt(d_yy)) / (m * m)
+        term1 = np.sum(np.sqrt(np.clip(d_xy, 0.0, None))) / (n * m)
+        term2 = np.sum(np.sqrt(np.clip(d_xx, 0.0, None))) / (n * n)
+        term3 = np.sum(np.sqrt(np.clip(d_yy, 0.0, None))) / (m * m)
         
         return 2 * term1 - term2 - term3
 
@@ -527,7 +527,25 @@ def _pp_plot_single(evaluator, ax, n_samples, label=None, color=None):
 
     ax.plot(theoretical_cdf, empirical_cdf, label=label, color=color, alpha=0.8)
 
-if __name__ == '__main__':
+def main(argv=None):
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="PP-plots of latent norms for a directory of per-digit MNIST models."
+    )
+    parser.add_argument(
+        "--base-dir",
+        required=True,
+        help="Report directory containing one sub-folder per model "
+        "(sub-folder name ending in the digit, each with a .pkl config and a .pt state dict).",
+    )
+    parser.add_argument(
+        "--data-dir",
+        required=True,
+        help="Location of the MNIST data (passed as `dataloc` to MnistDequantized).",
+    )
+    parser.add_argument("--n-test", type=int, default=1000, help="Test points per digit.")
+    args = parser.parse_args(argv)
 
     plt.rcParams.update({
         "pgf.texsystem": "pdflatex",
@@ -541,7 +559,7 @@ if __name__ == '__main__':
     })
 
     plt.style.use('ggplot')
-    base_dir = "/home/faried/Projects/USFlows/reports/mnist_ablation_best_veriflow"
+    base_dir = args.base_dir
     subfolders = sorted(os.listdir(base_dir))
     colors = ['C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']  # Add more if needed
 
@@ -568,7 +586,7 @@ if __name__ == '__main__':
 
         # Load test set
         from cjd_flows.explib.datasets import MnistDequantized
-        mnisti = MnistDequantized(dataloc="/home/faried/Projects/USFlows/data/mnist", space_to_depth_factor=4, digit=i, train=False)[:1000][0]
+        mnisti = MnistDequantized(dataloc=args.data_dir, space_to_depth_factor=4, digit=i, train=False)[:args.n_test][0]
 
         evaluator = RadialFlowEvaluator(model, mnisti)
         evaluators.append(evaluator)
@@ -578,13 +596,10 @@ if __name__ == '__main__':
 
     if evaluators:
         pp_plot_multiple_norms(evaluators, labels, colors=colors)
-        print("Saved combined PP-plot to 'pp_plot_combined.png'")
+        print("Saved combined PP-plot to 'pp_plot_combined-mixure.png'")
     else:
         print("No valid models found.")
 
 
-
-
-
-
-
+if __name__ == '__main__':
+    main()
