@@ -46,6 +46,9 @@ pyro-based API of 0.9 stays available as an optional extra.
   p-value) with AUROC/AUPR/FPR@95 (`cjd_flows.scores`); ONNX export of
   `log_prob`, `sample`, `forward` and `inverse` graphs for all bases
   (`cjd_flows.export`).
+- **Evaluation suite** (`cjd_flows.evaluation`): `RadialFlowEvaluator`, moved
+  from `cjd_flows.explib.eval` (which re-exports it) and extended to v1 flows
+  with a radial or Gaussian base. Needs the `eval` extra, not pyro.
 - **Testing helpers** (`cjd_flows.testing`): `check_bijection`,
   `jacobian_log_abs_det` and `check_flow_normalization` for custom layers.
 - Benchmark scripts in `benchmarks/` (density suite and a CIFAR-10 study).
@@ -74,6 +77,10 @@ pyro-based API of 0.9 stays available as an optional extra.
   negative faces; wrong L1 normalizer; wrong sample shapes for multi-dimensional
   events; integer `p` was rejected; a broken duplicate `Categorical` shadowed
   the working one.
+- Evaluation suite: the HSIC independence test failed on GPU; plots changed
+  the global matplotlib style; the NLL/latent-norm scatter plot flattened
+  samples before the flow (broke image flows); binned uniformity mishandled
+  directions on the bin edge.
 - Transforms: Householder and rotation inverses, per-sample LeakyReLU
   log-determinant, block-LU sign, dtype handling of the LU transform, and the
   coupling mask is now a non-persistent buffer.
