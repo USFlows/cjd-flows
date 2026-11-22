@@ -108,26 +108,6 @@ def _nll_scores(flow, data, batch_size=1000):
     return torch.cat(out)
 
 
-def _read_records(path):
-    """Complete JSON records of a results file.
-
-    Only newline-terminated lines count as complete: an unterminated last line
-    (interrupted append) is ignored here and truncated before the next append,
-    so its run is redone. A malformed terminated line raises.
-    """
-    text = path.read_text()
-    lines = text.split("\n")[:-1]  # the last segment is either "" or an unterminated tail
-    records = []
-    for i, line in enumerate(lines):
-        if not line.strip():
-            continue
-        try:
-            records.append(json.loads(line))
-        except json.JSONDecodeError:
-            raise ValueError(f"{path}:{i + 1}: malformed record") from None
-    return records
-
-
 def run_one(spec, meta) -> dict:
     import torch
 
@@ -185,7 +165,7 @@ def main():
     ap.add_argument("--out", default="benchmarks/runs/images")
     args = ap.parse_args()
 
-    from benchmarks.common import run_metadata
+    from benchmarks.common import drop_incomplete_tail, read_records, run_metadata
 
     meta = run_metadata("cuda")  # source and hardware of this process, captured before any run
     specs = grid(args.task, args.datasets, args.seeds, args.couplings, args.bases, args.classes, args.epochs)
@@ -200,16 +180,13 @@ def main():
 
     done = set()
     for f in out.glob("results*.jsonl"):
-        for r in _read_records(f):
+        for r in read_records(f):
             if r.get("ok"):
                 done.add(resume_key(r))
     specs = [s for s in specs if resume_key(s) not in done]
     print(f"[shard {args.shard}] {len(specs)} runs to do", flush=True)
     own = out / f"results_shard{args.shard}.jsonl"
-    if own.exists():
-        data = own.read_bytes()
-        if data and not data.endswith(b"\n"):  # drop an incomplete tail (its run is re-done)
-            own.write_bytes(data[: data.rfind(b"\n") + 1])
+    drop_incomplete_tail(own)  # an interrupted append; its run is redone
     with open(own, "a") as f:
         for spec in specs:
             rec = run_one(spec, meta)
