@@ -20,7 +20,7 @@ from cjd_flows.models import USFlow, VeriFlow, make_base
 from cjd_flows.radial import RadialBase, RadialMixture
 from cjd_flows.train import fit
 
-__version__ = "1.0.0.dev0"
+__version__ = "1.0.0"
 
 __all__ = [
     "Bijection", "Chain", "Flow", "BaseDistribution", "StandardNormal",
