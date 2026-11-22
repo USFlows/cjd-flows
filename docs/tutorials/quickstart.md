@@ -33,6 +33,23 @@ Because the determinant is constant, `log_prob(x)` is the base log-density of
 the latent plus one scalar, so the latent norm ranks inputs by density (for a
 radial base with a monotone profile).
 
+## Saving and loading
+
+Flows built with `USFlow` / `VeriFlow` remember their builder arguments, so a
+saved file is enough to rebuild them:
+
+```python
+from cjd_flows import load, save
+
+save(flow, "flow.pt", metadata={"epochs": 30})
+flow = load("flow.pt")   # rebuilt from the stored configuration, in eval mode
+```
+
+The file holds tensors, strings and numbers only and is read with
+`torch.load(..., weights_only=True)`. A flow with your own architecture is
+loaded into a model you construct, `load(path, model=my_flow)`; see
+{mod}`cjd_flows.io` for registering your own builders.
+
 ## Choosing the base
 
 `base` selects the base distribution (see {func}`~cjd_flows.models.make_base`):
