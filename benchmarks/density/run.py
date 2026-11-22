@@ -4,7 +4,8 @@ Runs a grid of (dataset x base x coupling x seed) configurations in a process
 pool and appends one JSON record per run to ``<out>/results.jsonl``.
 
 Suites: ``toy`` (bases x couplings), ``arch`` (couplings x mixing layers, incl. the
-affine reference without constant determinant), ``tabular``, ``smoke``.
+affine reference without constant determinant), ``tabular`` (MAF suite: additive,
+autoregressive and the affine reference x four bases), ``smoke``.
 
 Usage::
 
@@ -196,9 +197,10 @@ def tabular_grid(seeds):
     }
     specs = []
     for (ds, c), base, coup, seed in itertools.product(
-        cfg.items(), ["gaussian", "ggmix", "ggmix-monotone", "spline", "radial-mixture"], ["additive", "autoregressive"], seeds
+        cfg.items(), ["gaussian", "ggmix-monotone", "spline", "radial-mixture"], ["additive", "autoregressive", "affine"],
+        seeds,
     ):
-        specs.append(dict(dataset=ds, base=base, coupling=coup, seed=seed, threads=4, **c))
+        specs.append(dict(dataset=ds, base=base, coupling=coup, mixing="lu", seed=seed, threads=4, **c))
     return specs
 
 
@@ -241,8 +243,10 @@ def main():
     # resume: compare on the union of all spec keys (specs differ, e.g. only GMM specs have ``d``)
     keys = sorted({k for s in specs for k in s})
 
+    defaults = {"mixing": "lu"}  # records from before ``mixing`` was a spec field used LU
+
     def resume_key(d):
-        return json.dumps({k: d.get(k) for k in keys}, sort_keys=True)
+        return json.dumps({k: d.get(k, defaults.get(k)) for k in keys}, sort_keys=True)
 
     done = set()
     res_file = out / "results.jsonl"
