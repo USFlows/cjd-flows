@@ -167,7 +167,7 @@ def test_hsic_matches_trace_formula():
     assert 0 <= p_value <= 1
 
 
-@pytest.mark.parametrize("p", [0.005, 0.5, 1.0, 2.0, float("inf")])
+@pytest.mark.parametrize("p", [0.005, 0.5, 1.0, 2.0, 1e6, float("inf")])
 def test_lp_direction_sampler_is_on_the_sphere(p):
     ev = object.__new__(RadialFlowEvaluator)
     ev.p = p
@@ -189,6 +189,10 @@ def test_hsic_rejects_degenerate_latents():
     ev.latents[:] = ev.latents[:1]  # constant norms and directions
     with pytest.raises(ValueError):
         ev.hs_independence_test(n_permutations=5)
+    ev = RadialFlowEvaluator(flow, x)
+    ev.latents[0] = 0.0
+    with pytest.raises(ValueError):
+        ev.binned_uniformity_test(n_bins=4)
 
 
 def test_binned_uniformity_rejects_high_dimensions():

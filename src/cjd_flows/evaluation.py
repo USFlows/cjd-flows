@@ -32,6 +32,7 @@ import torch
 try:
     import matplotlib.pyplot as plt
     import scipy.stats as stats
+    from scipy.special import logsumexp
     from scipy.stats import binomtest, chi2, ks_2samp, norm, wasserstein_distance, wilcoxon
     from sklearn.neighbors import KernelDensity
 except ImportError as e:  # pragma: no cover - depends on the environment
@@ -238,8 +239,10 @@ class RadialFlowEvaluator:
         total_bins = n_bins**self.dim
         if total_bins > 2**62:
             raise ValueError(f"n_bins ** dim = {n_bins}**{self.dim} cells is too many; use a low-dimensional latent")
-        directions = self.latents / torch.linalg.vector_norm(self.latents, ord=self.p, dim=1, keepdim=True)
-        directions = directions.detach().cpu().numpy()
+        norms = torch.linalg.vector_norm(self.latents, ord=self.p, dim=1, keepdim=True)
+        if not (torch.isfinite(norms).all() and (norms > 0).all()):
+            raise ValueError("Binned uniformity test needs finite, nonzero latent norms (a latent lies at the centre)")
+        directions = (self.latents / norms).detach().cpu().numpy()
         n = len(directions)
         if n_reference is None:
             n_reference = max(100_000, 50 * n)
@@ -271,8 +274,11 @@ class RadialFlowEvaluator:
         # i.i.d. coordinates x_i with density proportional to exp(-|x|^p), so
         # |x_i|^p = G_i ~ Gamma(1/p); x / ||x||_p = sign * (G_i / sum G)^(1/p)
         # stays in [-1, 1] (no overflow for small p)
-        g = np.random.gamma(1.0 / self.p, 1.0, size=(n, d))
-        log_ratio = np.log(g) - np.log(g.sum(axis=1, keepdims=True))
+        # log G via G = G1 * U^(1/a), G1 ~ Gamma(a + 1): finite even when
+        # Gamma(a) underflows to 0 for tiny shapes a = 1/p (large p)
+        a = 1.0 / self.p
+        log_g = np.log(np.random.gamma(a + 1.0, 1.0, size=(n, d))) + np.log(np.random.uniform(size=(n, d))) / a
+        log_ratio = log_g - logsumexp(log_g, axis=1, keepdims=True)
         return np.random.choice([-1.0, 1.0], size=(n, d)) * np.exp(log_ratio / self.p)
 
     @staticmethod
