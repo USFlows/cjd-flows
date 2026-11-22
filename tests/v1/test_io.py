@@ -75,6 +75,9 @@ def test_config_records_defaults_and_outermost_builder():
     cfg = flow.builder_config
     assert cfg["builder"] == "VeriFlow"
     assert cfg["kwargs"] == {"event_shape": [4], "blocks": 1, "hidden": [8], "base": "ggmix-monotone", "p": 1.0}
+    inner = cfg["delegate"]  # the fully resolved USFlow call, defaults included
+    assert inner["builder"] == "USFlow" and inner["kwargs"]["masked"] is True
+    assert inner["kwargs"]["shift"] == "coordinate" and inner["kwargs"]["global_scale"] is True
     usf = USFlow((4,), blocks=1)
     assert usf.builder_config["kwargs"]["mixing"] == "lu"  # defaults are recorded
     assert copy.deepcopy(usf).builder_config == usf.builder_config  # e.g. EMA copies
@@ -111,7 +114,9 @@ def test_registered_custom_builder(tmp_path):
         return USFlow((dim,), blocks=1, hidden=(4,))
 
     flow = tiny(3, scale=2.0)
-    assert flow.builder_config == {"builder": "TinyTestFlow", "kwargs": {"dim": 3, "scale": 2.0}}
+    assert flow.builder_config["builder"] == "TinyTestFlow"
+    assert flow.builder_config["kwargs"] == {"dim": 3, "scale": 2.0}
+    assert flow.builder_config["delegate"]["builder"] == "USFlow"
     _perturb(flow)
     loaded = load(save(flow, tmp_path / "f.pt"))
     assert loaded.builder_config == flow.builder_config
@@ -175,4 +180,47 @@ def test_trained_flow_roundtrip(tmp_path):
     fit(flow, x, epochs=2, batch_size=64, lr=1e-3, ema_decay=0.9, verbose=False)
     assert flow.builder_config is not None
     loaded = load(save(flow, tmp_path / "trained.pt"))
+    assert torch.equal(loaded.log_prob(x), flow.eval().log_prob(x))
+
+
+def test_delegated_defaults_are_frozen(tmp_path, monkeypatch):
+    # a later version changes a USFlow default that VeriFlow does not set itself
+    flow = _perturb(VeriFlow((4,), blocks=1, hidden=(8,)))
+    path = save(flow, tmp_path / "f.pt")
+    import cjd_flows.models as models
+
+    monkeypatch.setitem(models.USFlow.__wrapped__.__kwdefaults__, "shift", None)
+    assert not any(isinstance(m, Shift) for m in VeriFlow((4,), blocks=1, hidden=(8,)).modules())
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        loaded = load(path)
+    assert any(isinstance(m, Shift) for m in loaded.modules())
+    assert loaded.builder_config == flow.builder_config
+    x = torch.randn(5, 4)
+    assert torch.equal(loaded.log_prob(x), flow.eval().log_prob(x))
+
+
+def test_outer_builder_that_changes_the_model_falls_back(tmp_path):
+    @register_builder(name="WrappedTestFlow")
+    def wrapped(dim: int):
+        f = USFlow((dim,), blocks=1, hidden=(4,))
+        f.bijection.bijections.append(LULinear((dim,)))  # changed after the inner call
+        return f
+
+    flow = _perturb(wrapped(3))
+    path = save(flow, tmp_path / "f.pt")
+    with pytest.warns(UserWarning, match="WrappedTestFlow"):
+        loaded = load(path)
+    x = torch.randn(4, 3)
+    assert torch.equal(loaded.log_prob(x), flow.eval().log_prob(x))
+
+
+def test_positional_only_builder(tmp_path):
+    @register_builder(name="PosOnlyTestFlow")
+    def posonly(dim, /, blocks=1):
+        return USFlow((dim,), blocks=blocks, hidden=(4,))
+
+    flow = _perturb(posonly(3, blocks=2))
+    loaded = load(save(flow, tmp_path / "f.pt"))
+    x = torch.randn(4, 3)
     assert torch.equal(loaded.log_prob(x), flow.eval().log_prob(x))

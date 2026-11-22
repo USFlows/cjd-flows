@@ -71,8 +71,15 @@ def register_builder(fn: Optional[Callable] = None, *, name: Optional[str] = Non
     JSON-serializable
     (numbers, strings, ``None``, lists/tuples, dicts with string keys);
     otherwise ``builder_config`` is ``None`` and the reason is kept in
-    ``builder_config_error``. When a registered builder calls another one
-    (e.g. ``VeriFlow`` calls ``USFlow``), the outermost call is recorded.
+    ``builder_config_error``.
+
+    When a registered builder delegates to another one (e.g. ``VeriFlow``
+    calls ``USFlow``), the outer call is recorded and the inner, fully
+    resolved configuration is kept under ``"delegate"``. :func:`load` replays
+    the innermost configuration first, so the defaults of every builder in the
+    chain are frozen at save time; if the weights do not fit (an outer builder
+    changed the model after the inner call), it falls back to the outer
+    builder with a warning.
 
     Can be used as ``@register_builder`` or ``@register_builder(name="MyFlow")``.
     """
@@ -95,8 +102,11 @@ def register_builder(fn: Optional[Callable] = None, *, name: Optional[str] = Non
                     arguments.update(arguments.pop(p.name))
                 elif p.kind is inspect.Parameter.VAR_POSITIONAL and p.name in arguments:
                     raise TypeError(f"builder {key!r}: *{p.name} arguments cannot be recorded")
+            inner = getattr(model, "builder_config", None)  # set by a delegated registered builder
             try:
                 config = {"builder": key, "kwargs": _to_json(arguments)}
+                if inner is not None:
+                    config["delegate"] = inner
                 error = None
             except TypeError as e:
                 config, error = None, f"builder {key!r}: argument not JSON-serializable ({e})"
@@ -112,6 +122,21 @@ def register_builder(fn: Optional[Callable] = None, *, name: Optional[str] = Non
 
 def _qualname(f: Callable) -> str:
     return f"{getattr(f, '__module__', '')}.{getattr(f, '__qualname__', repr(f))}"
+
+
+def _call_builder(config: dict) -> nn.Module:
+    """Calls the registered builder of ``config`` with its recorded arguments."""
+    builder = _BUILDERS.get(config["builder"])
+    if builder is None:
+        raise ValueError(
+            f"unknown builder {config['builder']!r}; import the module that registers it before loading"
+        )
+    kwargs = dict(config["kwargs"])
+    args = []
+    for p in inspect.signature(builder.__wrapped__).parameters.values():
+        if p.kind is inspect.Parameter.POSITIONAL_ONLY and p.name in kwargs:
+            args.append(kwargs.pop(p.name))
+    return builder(*args, **kwargs)
 
 
 # --------------------------------------------------------------------------- save / load
@@ -226,15 +251,39 @@ def load(
         config = json.loads(payload["config"])
         import cjd_flows.models  # noqa: F401  (registers the built-in builders)
 
-        builder = _BUILDERS.get(config["builder"])
-        if builder is None:
-            raise ValueError(
-                f"unknown builder {config['builder']!r}; import the module that registers it before loading"
-            )
-        model = builder(**config["kwargs"])
-        if payload["dtype"]:
-            model = model.to(getattr(torch, payload["dtype"]))
-    model.load_state_dict(payload["state_dict"], strict=strict)
+        chain = [config]  # outer ... innermost
+        while "delegate" in chain[-1]:
+            chain.append(chain[-1]["delegate"])
+        dtype = getattr(torch, payload["dtype"]) if payload["dtype"] else None
+        error: Optional[Exception] = None
+        for i, cfg in enumerate(reversed(chain)):  # innermost first: all defaults frozen
+            candidate = _call_builder(cfg)
+            if dtype is not None:
+                candidate = candidate.to(dtype)
+            try:  # choose the level strictly, even if the caller asked for strict=False
+                candidate.load_state_dict(payload["state_dict"], strict=True)
+            except RuntimeError as e:  # this level does not reproduce the saved architecture
+                error = e
+                continue
+            if i > 0:
+                warnings.warn(
+                    f"rebuilt {path} with builder {cfg['builder']!r}; the configuration of the delegated "
+                    f"builder did not reproduce the saved weights, so its current defaults were used",
+                    stacklevel=2,
+                )
+            candidate.builder_config = config
+            candidate.builder_config_error = None
+            model = candidate
+            break
+        else:
+            if strict:
+                raise error
+            model = _call_builder(config)
+            if dtype is not None:
+                model = model.to(dtype)
+            model.load_state_dict(payload["state_dict"], strict=False)
+    else:
+        model.load_state_dict(payload["state_dict"], strict=strict)
     if map_location is not None:
         model = model.to(map_location)
     return model.eval()
