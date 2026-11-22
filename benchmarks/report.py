@@ -92,7 +92,8 @@ def density_section(runs: Path) -> str:
         for r in tab:
             r["test_ll"] = -r["test_nll"]
         out.append(pivot(tab, lambda r: f"{r['dataset']} / {r['coupling']}", lambda r: r["base"], "test_ll", 2, lower_better=False))
-        out.append("\n" + provenance(tab))
+        out.append("\n" + _last_epoch_note(tab, "epochs_run"))
+        out.append(provenance(tab))
         out.append(
             "\n\nReference (test LL, nats): RealNVP power −0.17, gas 8.33, hepmass −18.71, miniboone −13.55, bsds300 153.28; "
             "Glow 0.17 / 8.15 / −18.92 / −11.35 / 155.07; MAF 0.24 / 10.08 / −17.70 / −11.75 / 155.69; "
@@ -147,10 +148,14 @@ def _images_records(runs: Path, task: str):
     return recs
 
 
-def _last_epoch_note(recs) -> str:
-    n_last = sum(r.get("best_epoch") == r.get("epochs") for r in recs)
-    note = f"Selected checkpoint at the last epoch in {n_last} of {len(recs)} runs"
-    if n_last > len(recs) / 2:
+def _last_epoch_note(recs, total_key="epochs") -> str:
+    """How many runs selected their last epoch (records without the information are left out)."""
+    known = [r for r in recs if r.get("best_epoch") is not None and r.get(total_key) is not None]
+    if not known:
+        return ""
+    n_last = sum(r["best_epoch"] == r[total_key] for r in known)
+    note = f"Selected checkpoint at the last epoch in {n_last} of {len(known)} runs"
+    if n_last > len(known) / 2:
         note += " (the validation NLL was still improving: the epoch budget is too short for convergence)"
     return note + ".\n"
 
