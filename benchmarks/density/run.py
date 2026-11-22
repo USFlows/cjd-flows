@@ -223,14 +223,20 @@ def main():
             s["threads"] = args.threads
     out = Path(args.out) / args.suite
     out.mkdir(parents=True, exist_ok=True)
+    # resume: compare on the union of all spec keys (specs differ, e.g. only GMM specs have ``d``)
+    keys = sorted({k for s in specs for k in s})
+
+    def resume_key(d):
+        return json.dumps({k: d.get(k) for k in keys}, sort_keys=True)
+
     done = set()
     res_file = out / "results.jsonl"
     if res_file.exists():
         for line in res_file.read_text().splitlines():
             r = json.loads(line)
             if r.get("ok"):
-                done.add(json.dumps({k: r[k] for k in specs[0] if k in r}, sort_keys=True))
-    specs = [s for s in specs if json.dumps(s, sort_keys=True) not in done]
+                done.add(resume_key(r))
+    specs = [s for s in specs if resume_key(s) not in done]
     print(f"{len(specs)} runs to do", flush=True)
 
     import multiprocessing as mp
