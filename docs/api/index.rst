@@ -23,7 +23,5 @@ data to latent (the normalizing direction used for likelihoods),
    scores
    evaluation
    export
+   io
    testing
-
-..
-   io  (save/load, added separately)

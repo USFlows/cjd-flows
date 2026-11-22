@@ -23,3 +23,5 @@ The top-level package re-exports the most common objects:
      - :doc:`radial`
    * - :func:`~cjd_flows.train.fit`
      - :doc:`train`
+   * - :func:`~cjd_flows.io.save`, :func:`~cjd_flows.io.load`
+     - :doc:`io`
