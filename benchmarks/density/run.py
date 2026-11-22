@@ -243,8 +243,10 @@ def main():
     # resume: compare on the union of all spec keys (specs differ, e.g. only GMM specs have ``d``)
     keys = sorted({k for s in specs for k in s})
 
+    defaults = {"mixing": "lu"}  # records from before ``mixing`` was a spec field used LU
+
     def resume_key(d):
-        return json.dumps({k: d.get(k) for k in keys}, sort_keys=True)
+        return json.dumps({k: d.get(k, defaults.get(k)) for k in keys}, sort_keys=True)
 
     done = set()
     res_file = out / "results.jsonl"
