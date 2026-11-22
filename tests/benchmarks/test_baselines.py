@@ -14,12 +14,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 baselines = pytest.importorskip("benchmarks.baselines")
 
 
-def _perturbed(mixing, base, shape=(3,)):
+def _perturbed(mixing, base, shape=(3,), scale=0.3):
     torch.manual_seed(0)
     flow = baselines.affine_reference_flow(shape, blocks=3, hidden=(16,), mixing=mixing, base=base).double()
     with torch.no_grad():
         for p in flow.parameters():  # move the conditioners away from their zero-output init
-            p.add_(torch.randn_like(p) * 0.3)
+            p.add_(torch.randn_like(p) * scale)
     return flow.eval()
 
 
@@ -33,8 +33,8 @@ def test_affine_reference_log_prob_matches_autograd(mixing, base):
         torch.linalg.slogdet(torch.autograd.functional.jacobian(lambda v: flow.transform(v[None])[0], xi))[1]
         for xi in x
     ])
-    assert torch.allclose(flow.log_prob(x), flow.base.log_prob(z) + logdet, atol=1e-10)
-    assert torch.allclose(flow.bijection.inverse(z), x, atol=1e-10)
+    assert torch.allclose(flow.log_prob(x), flow.base.log_prob(z) + logdet, rtol=0.0, atol=1e-10)
+    assert torch.allclose(flow.bijection.inverse(z), x, rtol=0.0, atol=1e-10)
     assert logdet.std() > 1e-3  # the determinant really depends on x
 
 
@@ -48,10 +48,12 @@ def test_affine_coupling_keeps_float64_and_half_inputs():
 
 
 def test_affine_reference_image_shape():
-    flow = _perturbed("lu", "gaussian", shape=(2, 4, 4))
+    # smaller perturbation: ConvNet conditioners otherwise produce log-scales near -13, and the
+    # inverse amplifies rounding errors by exp(-log_scale) (conditioning, not a precision bug)
+    flow = _perturbed("lu", "gaussian", shape=(2, 4, 4), scale=0.05)
     x = torch.randn(3, 2, 4, 4, dtype=torch.float64)
     assert flow.log_prob(x).shape == (3,)
-    assert torch.allclose(flow.bijection.inverse(flow.transform(x)), x, atol=1e-10)
+    assert torch.allclose(flow.bijection.inverse(flow.transform(x)), x, rtol=0.0, atol=1e-10)
 
 
 def test_half_precision_flow_keeps_fp32_log_density():
