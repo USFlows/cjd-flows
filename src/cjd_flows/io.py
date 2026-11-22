@@ -28,6 +28,7 @@ Optimizer, scheduler and EMA state are not part of the file.
 from __future__ import annotations
 
 import contextvars
+import copy
 import functools
 import inspect
 import json
@@ -150,8 +151,12 @@ def _same_builder(a: Callable, b: Callable) -> bool:
 
 
 def _split_args(signature: inspect.Signature, recorded: dict):
-    """``(args, kwargs)`` for a call with recorded arguments (positional-only ones positionally)."""
-    kwargs = dict(recorded)
+    """``(args, kwargs)`` for a call with recorded arguments (positional-only ones positionally).
+
+    Deep-copied, so a builder that mutates its arguments cannot change the
+    recorded configuration.
+    """
+    kwargs = copy.deepcopy(recorded)
     args = []
     for p in signature.parameters.values():
         if p.kind is inspect.Parameter.POSITIONAL_ONLY and p.name in kwargs:

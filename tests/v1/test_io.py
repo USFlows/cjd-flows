@@ -279,5 +279,8 @@ def test_arguments_are_recorded_before_the_builder_mutates_them(tmp_path):
     flow = _perturb(mutating(3, {"blocks": 2}))
     assert flow.builder_config["kwargs"]["opts"] == {"blocks": 2}
     loaded = load(save(flow, tmp_path / "f.pt"))
+    assert loaded.builder_config["kwargs"]["opts"] == {"blocks": 2}  # not consumed by the replay
+    again = load(save(loaded, tmp_path / "g.pt"))  # second round trip
     x = torch.randn(4, 3)
     assert torch.equal(loaded.log_prob(x), flow.eval().log_prob(x))
+    assert torch.equal(again.log_prob(x), flow.log_prob(x))
