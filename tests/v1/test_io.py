@@ -327,3 +327,13 @@ def test_extra_state_objects_are_rejected(tmp_path):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             save(_WithExtraState(object()), tmp_path / "f.pt")
+
+
+def test_supplied_model_gets_the_saved_precision(tmp_path):
+    flow = _perturb(USFlow((3,), blocks=1, hidden=(8,)).double())
+    path = save(flow, tmp_path / "f.pt")
+    target = USFlow((3,), blocks=1, hidden=(8,))  # float32
+    loaded = load(path, model=target)
+    assert next(loaded.parameters()).dtype == torch.float64
+    for (name, a), (_, b) in zip(flow.state_dict().items(), loaded.state_dict().items()):
+        assert a.dtype == b.dtype and torch.equal(a, b), name

@@ -314,7 +314,9 @@ def load(
     Args:
         path: file written by :func:`save`.
         model: module to load the weights into. If ``None``, the flow is
-            rebuilt from the stored builder configuration.
+            rebuilt from the stored builder configuration. A supplied model
+            gets the saved dtype of every parameter and buffer (call e.g.
+            ``.float()`` afterwards for another precision).
         map_location: device to move the flow to (default: CPU).
         strict: passed to :meth:`~torch.nn.Module.load_state_dict`.
 
@@ -343,9 +345,10 @@ def load(
         model = _call_builder(config)
         if payload["dtype"]:
             model = model.to(getattr(torch, payload["dtype"]))
-        _restore_dtypes(model, json.loads(payload.get("dtypes") or "{}"))
         model.builder_config = config
         model.builder_config_error = None
+    # saved dtypes win, also for a supplied model (load_state_dict would cast silently)
+    _restore_dtypes(model, json.loads(payload.get("dtypes") or "{}"))
     model.load_state_dict(payload["state_dict"], strict=strict)
     if map_location is not None:
         model = model.to(map_location)
