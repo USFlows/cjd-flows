@@ -200,13 +200,14 @@ def images_section(runs: Path) -> str:
                 out.append(f"\n### Score: {score} (rows: dataset / coupling; columns: base)\n")
                 out.append(pivot(cells, row, lambda r: r["base"], "auroc", 3, lower_better=False))
                 out.append("\n")
-        n_classes = defaultdict(set)
+        class_sets = defaultdict(set)  # (dataset, coupling, base) -> evaluated classes
         for ds, cls, coupling, base in per_class:
-            n_classes[(ds, coupling, base)].add(cls)
-        counts = sorted({len(v) for v in n_classes.values()})
-        if len(counts) > 1:
-            out.append(f"\n**Incomplete sweep:** the cells average over {counts[0]}–{counts[-1]} classes, "
-                       "so they are not yet comparable.\n")
+            class_sets[(ds, coupling, base)].add(cls)
+        differing = sorted({ds for ds, _, _ in class_sets
+                            if len({frozenset(v) for k, v in class_sets.items() if k[0] == ds}) > 1})
+        if differing:
+            out.append(f"\n**Incomplete sweep:** on {', '.join(differing)} the cells average over different "
+                       "sets of classes, so they are not yet comparable.\n")
         main_score = "nll" if "nll" in scores else scores[0]
         out.append(f"\n### Per-class AUROC, score {main_score} (mean over seeds)\n")
         cells = []
@@ -216,8 +217,11 @@ def images_section(runs: Path) -> str:
                 cells.append(dict(dataset=ds, cls=cls, model=f"{coupling} / {base}", auroc=mean(vals)))
         out.append(pivot(cells, lambda r: f"{r['dataset']} / {r['cls']}", lambda r: r["model"], "auroc", 3,
                          lower_better=False))
-        out.append("\n\nNormal-class test bits/dim (mean ± std over classes):\n")
-        out.append(pivot(oc, row, lambda r: r["base"], "normal_test_bpd"))
+        out.append("\n\nNormal-class test bits/dim (mean ± std over classes, each class averaged over its seeds "
+                   "first):\n")
+        cells = [dict(dataset=ds, coupling=coupling, base=base, bpd=mean(r["normal_test_bpd"] for r in rs))
+                 for (ds, _cls, coupling, base), rs in per_class.items()]
+        out.append(pivot(cells, row, lambda r: r["base"], "bpd"))
         out.append("\n" + _last_epoch_note(oc))
         out.append(provenance(oc))
     return "\n".join(out)

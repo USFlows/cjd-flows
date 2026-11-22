@@ -44,7 +44,20 @@ def test_images_section(tmp_path):
     assert "Incomplete sweep" not in md
     assert images_section(tmp_path / "empty") == ""
     _write(runs / "images" / "oneclass" / "results_shard2.jsonl", [_oneclass("mnist", 3, "gin", "gaussian", 0.9)])
-    assert "average over 3–4 classes" in images_section(runs)
+    assert "on mnist the cells average over different sets of classes" in images_section(runs)
+    # equal counts but different classes are flagged as well: additive {1, 2, 3}, gin {0, 1, 2}
+    _write(runs / "images" / "oneclass" / "results_shard2.jsonl", [_oneclass("mnist", 3, "additive", "gaussian", 0.9)])
+    _write(runs / "images" / "oneclass" / "results_shard0.jsonl", oc[1:3])  # drops (class 0, additive)
+    assert "different sets of classes" in images_section(runs)
+
+
+def test_images_normal_bpd_is_averaged_per_class(tmp_path):
+    recs = [dict(_oneclass("mnist", 0, "gin", "gaussian", 0.9), seed=0, normal_test_bpd=1.0),
+            dict(_oneclass("mnist", 0, "gin", "gaussian", 0.9), seed=1, normal_test_bpd=3.0),
+            dict(_oneclass("mnist", 1, "gin", "gaussian", 0.9), seed=0, normal_test_bpd=5.0)]
+    _write(tmp_path / "images" / "oneclass" / "results_shard0.jsonl", recs)
+    md = images_section(tmp_path)
+    assert "| mnist / gin | **3.500 ± 2.121** |" in md  # classes 2.0 and 5.0, not runs 1, 3, 5
 
 
 def test_arch_alignment_tables(tmp_path):
