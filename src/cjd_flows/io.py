@@ -90,7 +90,7 @@ def register_builder(fn: Optional[Callable] = None, *, name: Optional[str] = Non
     def decorate(f: Callable) -> Callable:
         key = name or f.__name__
         existing = _BUILDERS.get(key)
-        if existing is not None and _qualname(existing.__wrapped__) != _qualname(f):
+        if existing is not None and not _same_builder(existing.__wrapped__, f):
             raise ValueError(f"a different builder named {key!r} is already registered")
         signature = inspect.signature(f)
 
@@ -99,7 +99,7 @@ def register_builder(fn: Optional[Callable] = None, *, name: Optional[str] = Non
             saved = (_REPLAY.get() or {}).get(key)
             if saved is not None and _matches(signature, args, kwargs, saved["kwargs"]):
                 args, kwargs = _split_args(signature, saved["kwargs"])
-            model = f(*args, **kwargs)
+            # snapshot the arguments before the call: the builder may mutate them
             bound = signature.bind(*args, **kwargs)
             bound.apply_defaults()
             arguments = dict(bound.arguments)
@@ -108,14 +108,17 @@ def register_builder(fn: Optional[Callable] = None, *, name: Optional[str] = Non
                     arguments.update(arguments.pop(p.name))
                 elif p.kind is inspect.Parameter.VAR_POSITIONAL and p.name in arguments:
                     raise TypeError(f"builder {key!r}: *{p.name} arguments cannot be recorded")
-            inner = getattr(model, "builder_config", None)  # set by a delegated registered builder
             try:
-                config = {"builder": key, "kwargs": _to_json(arguments)}
+                recorded, error = _to_json(arguments), None  # deep copy
+            except TypeError as e:
+                recorded, error = None, f"builder {key!r}: argument not JSON-serializable ({e})"
+            model = f(*args, **kwargs)
+            inner = getattr(model, "builder_config", None)  # set by a delegated registered builder
+            config = None
+            if recorded is not None:
+                config = {"builder": key, "kwargs": recorded}
                 if inner is not None:
                     config["delegate"] = inner
-                error = None
-            except TypeError as e:
-                config, error = None, f"builder {key!r}: argument not JSON-serializable ({e})"
             model.builder_config = config
             model.builder_config_error = error
             return model
@@ -128,6 +131,22 @@ def register_builder(fn: Optional[Callable] = None, *, name: Optional[str] = Non
 
 def _qualname(f: Callable) -> str:
     return f"{getattr(f, '__module__', '')}.{getattr(f, '__qualname__', repr(f))}"
+
+
+def _same_builder(a: Callable, b: Callable) -> bool:
+    """True for the same function, or a re-definition of it (e.g. a module reload).
+
+    Closures are only the same if they are the same object: two closures from
+    one factory share code and name but capture different values.
+    """
+    if a is b:
+        return True
+    return (
+        _qualname(a) == _qualname(b)
+        and getattr(a, "__code__", None) == getattr(b, "__code__", None)
+        and getattr(a, "__closure__", None) is None
+        and getattr(b, "__closure__", None) is None
+    )
 
 
 def _split_args(signature: inspect.Signature, recorded: dict):

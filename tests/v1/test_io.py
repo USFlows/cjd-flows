@@ -247,3 +247,37 @@ def test_positional_only_builder(tmp_path):
     loaded = load(save(flow, tmp_path / "f.pt"))
     x = torch.randn(4, 3)
     assert torch.equal(loaded.log_prob(x), flow.eval().log_prob(x))
+
+
+def test_closures_with_the_same_name_are_rejected():
+    def factory(blocks):
+        def closure_flow(dim: int):
+            return USFlow((dim,), blocks=blocks, hidden=(4,))
+
+        return closure_flow
+
+    register_builder(factory(1), name="ClosureTestFlow")
+    with pytest.raises(ValueError, match="already registered"):
+        register_builder(factory(2), name="ClosureTestFlow")
+
+
+def test_reregistering_the_same_definition_is_allowed():
+    src = "def redefined_flow(dim: int):\n    return USFlow((dim,), blocks=1, hidden=(4,))\n"
+    ns1, ns2 = {"USFlow": USFlow, "__name__": "tests_redefine"}, {"USFlow": USFlow, "__name__": "tests_redefine"}
+    exec(compile(src, "redef.py", "exec"), ns1)
+    exec(compile(src, "redef.py", "exec"), ns2)  # like a module reload
+    register_builder(ns1["redefined_flow"], name="RedefinedTestFlow")
+    register_builder(ns2["redefined_flow"], name="RedefinedTestFlow")
+
+
+def test_arguments_are_recorded_before_the_builder_mutates_them(tmp_path):
+    @register_builder(name="MutatingTestFlow")
+    def mutating(dim: int, opts: dict):
+        blocks = opts.pop("blocks")  # consumes the caller's dict
+        return USFlow((dim,), blocks=blocks, hidden=(4,))
+
+    flow = _perturb(mutating(3, {"blocks": 2}))
+    assert flow.builder_config["kwargs"]["opts"] == {"blocks": 2}
+    loaded = load(save(flow, tmp_path / "f.pt"))
+    x = torch.randn(4, 3)
+    assert torch.equal(loaded.log_prob(x), flow.eval().log_prob(x))
