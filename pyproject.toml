@@ -7,7 +7,7 @@ name = "cjd-flows"
 version = "1.0.0.dev0"
 description = "Stable uniformly scaling normalizing flows with constant Jacobian determinant and radial base distributions."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "BSD-3-Clause"
 license-files = ["LICENCE.md"]
 authors = [
@@ -20,7 +20,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -40,24 +39,8 @@ legacy = ["pyro-ppl>=1.9"]
 onnx = ["onnx>=1.16", "onnxscript>=0.1", "onnxruntime>=1.17"]
 eval = ["scipy>=1.11", "scikit-learn>=1.4", "matplotlib>=3.8"]
 vision = ["torchvision>=0.17"]
-# Everything needed by cjd_flows.explib and scripts/ (experiment runner).
-experiments = [
-    "cjd-flows[legacy,eval,vision,onnx]",
-    "ray[tune]>=2.47",
-    # ray.train.v2 (imported via ray.tune) requires pydantic but ray does not
-    # declare it as a hard dependency.
-    "pydantic>=2.5",
-    "pandas>=2.2",
-    "pyarrow>=18",
-    "pyyaml>=6.0",
-    "click>=8.1",
-    "tensorboard>=2.15",
-    "idx2numpy>=1.2.3",
-    "plotly>=5.18",
-    "pillow>=10",
-    "tqdm>=4.66",
-    "requests>=2.31",
-]
+# First preprocessing of the MAF tabular benchmarks (cjd_flows.data.tabular).
+tabular = ["pandas>=2.2", "h5py>=3.10"]
 docs = [
     "sphinx>=7",
     "furo",
@@ -82,8 +65,8 @@ dev = [
 ]
 
 # ---------------------------------------------------------------------------
-# Build: src layout, ship only the `cjd_flows` package. The experiment runner
-# scripts, experiment configs and docs are repository tooling.
+# Build: src layout, ship only the `cjd_flows` package. Benchmarks and docs are
+# repository tooling.
 # ---------------------------------------------------------------------------
 [tool.hatch.build.targets.wheel]
 packages = ["src/cjd_flows"]
@@ -123,7 +106,7 @@ markers = [
 # ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 src = ["src", "tests"]
 extend-exclude = ["docs/conf.py"]
 
@@ -132,7 +115,7 @@ select = ["E", "F", "I", "UP", "B"]
 ignore = [
     "E501",   # line length is left to the formatter (long docstring/URL lines are fine)
     # Keep `typing.Optional/Union/Tuple/Sequence` annotations allowed (code base
-    # style; also valid on Python 3.10 without `from __future__ import annotations`).
+    # style).
     "UP006", "UP007", "UP035", "UP045",
     "B905",   # zip(strict=...) is not required
 ]
@@ -146,7 +129,4 @@ known-first-party = ["cjd_flows"]
 "src/cjd_flows/{flows,transforms,distributions,networks,sophia,linalg,utils}.py" = [
     "E", "I", "UP", "B", "F401", "F811", "F841", "F541",
 ]
-"src/cjd_flows/explib/**" = ["E", "I", "UP", "B", "F401", "F811", "F841", "F541"]
-"scripts/**" = ["E", "I", "UP", "B", "F401", "F811", "F841", "F541"]
 "tests/cjd_flows/**" = ["E", "I", "UP", "B", "F401", "F811", "F841", "F541"]
-"tests/explib/**" = ["E", "I", "UP", "B", "F401", "F811", "F841", "F541"]

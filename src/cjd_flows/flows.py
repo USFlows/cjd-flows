@@ -23,7 +23,7 @@ def _get_batch(data: Union[torch.Tensor, Dataset], indices: np.ndarray) -> torch
     """Returns the data points ``data[indices]`` as a single tensor.
 
     Supports tensors, datasets that accept fancy indexing (e.g.
-    :class:`torch.utils.data.TensorDataset` and the explib datasets) and generic
+    :class:`torch.utils.data.TensorDataset`) and generic
     map-style datasets (item-wise access + collation). If items are tuples
     (e.g. ``(x, label)``), only the first entry is returned.
     """

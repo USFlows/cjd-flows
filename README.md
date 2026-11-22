@@ -32,7 +32,7 @@ the latent level-set geometry intact.
 ```bash
 pip install cjd-flows                 # core: torch + numpy only
 pip install "cjd-flows[eval,onnx]"    # + scipy/sklearn/matplotlib, ONNX export
-pip install "cjd-flows[experiments]"  # + the YAML/Ray experiment framework and the legacy pyro API
+pip install "cjd-flows[legacy]"       # + the pyro-based 0.9 API
 ```
 
 For development (uses [uv](https://docs.astral.sh/uv/)):
@@ -192,18 +192,23 @@ It works with v1 flows (radial or Gaussian base) and with the 0.9 flows.
 suite (`benchmarks/density/run.py`: toy 2-D data, the asymmetric GMM of the USF
 paper and the MAF tabular suite) and a CIFAR-10 study (`benchmarks/cifar/`).
 Run outputs go to `benchmarks/runs/`; `benchmarks/report.py` aggregates them
-into Markdown tables.
+into Markdown tables. The toy and GMM suites need no extras; the MAF tabular
+suite needs the `[tabular]` extra (pandas, h5py) for the first preprocessing of
+GAS, HEPMASS and BSDS300. The CIFAR study needs Pillow for the sample grids
+(`[vision]` or `[eval]` extra) and logs to TensorBoard if `tensorboard` is
+installed.
 
 ## Legacy API
 
 The pyro-based API of v0.9 (`cjd_flows.flows.USFlow`,
-`cjd_flows.transforms`, `cjd_flows.distributions`, `cjd_flows.explib`) is still
-available with the `[legacy]` / `[experiments]` extras, and its known bugs are
-fixed. New code should use the v1 API above.
+`cjd_flows.transforms`, `cjd_flows.distributions`) is still available with the
+`[legacy]` extra, and its known bugs are fixed. New code should use the v1 API
+above.
 
-```bash
-python scripts/run-experiment.py --config <config file> --report_dir <log dir>
-```
+The YAML/Ray experiment framework of v0.9 (`cjd_flows.explib`, `scripts/`,
+`experiments/`) was removed in 1.0. Experiments for papers live in their own
+repositories; the last state of the framework is tagged
+[`archive/explib-final`](https://github.com/USFlows/cjd-flows/tree/archive/explib-final).
 
 ## Citation
 

@@ -201,9 +201,3 @@ def test_binned_uniformity_rejects_high_dimensions():
     with pytest.raises(ValueError):
         ev.binned_uniformity_test(n_bins=10)
 
-
-def test_legacy_location_reexports():
-    pytest.importorskip("pyro")
-    from cjd_flows.explib.eval import RadialFlowEvaluator as Legacy
-
-    assert Legacy is RadialFlowEvaluator

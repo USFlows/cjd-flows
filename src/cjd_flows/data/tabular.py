@@ -22,7 +22,9 @@ miniboone   43      29,556     3,284     3,648
 bsds300     63   1,000,000    50,000   250,000
 =========  ====  ==========  ========  ========
 
-Optional dependencies: ``pandas`` (gas, hepmass) and ``h5py`` (bsds300).
+Optional dependencies (``pip install "cjd-flows[tabular]"``): ``pandas``
+(gas, hepmass) and ``h5py`` (bsds300), needed only for the first
+preprocessing; cached splits load without them.
 """
 
 from __future__ import annotations
@@ -108,6 +110,18 @@ def _power(raw: Path):
     return (train - mu) / s, (val - mu) / s, (test - mu) / s
 
 
+def _require(module: str, dataset: str):
+    """Imports an optional preprocessing dependency with an actionable error."""
+    import importlib
+
+    try:
+        return importlib.import_module(module)
+    except ImportError as e:
+        raise ImportError(
+            f"Preprocessing the {dataset} data needs {module!r}: pip install \"cjd-flows[tabular]\""
+        ) from e
+
+
 def _read_legacy_frame_pickle(path: Path):
     """Reads the pandas-0.14 / Python-2 DataFrame pickle of the GAS data.
 
@@ -117,7 +131,7 @@ def _read_legacy_frame_pickle(path: Path):
     """
     import pickle
 
-    import pandas as pd
+    pd = _require("pandas", "GAS")
 
     try:
         from numpy._core.multiarray import _reconstruct
@@ -203,7 +217,7 @@ def _gas(raw: Path):
 
 
 def _hepmass(raw: Path):
-    import pandas as pd
+    pd = _require("pandas", "HEPMASS")
 
     path = raw / "data/hepmass"
     train = pd.read_csv(path / "1000_train.csv", index_col=False)
@@ -238,7 +252,7 @@ def _miniboone(raw: Path):
 
 
 def _bsds300(raw: Path):
-    import h5py
+    h5py = _require("h5py", "BSDS300")
 
     with h5py.File(raw / "data/BSDS300/BSDS300.hdf5", "r") as f:
         return np.asarray(f["train"]), np.asarray(f["validation"]), np.asarray(f["test"])
