@@ -109,17 +109,21 @@ def _nll_scores(flow, data, batch_size=1000):
 
 
 def _read_records(path):
-    """Complete JSON records of a results file; a partial last line (interrupted write) is skipped."""
+    """Complete JSON records of a results file.
+
+    Only newline-terminated lines count as complete: an unterminated last line
+    (interrupted append) is ignored here and truncated before the next append,
+    so its run is redone. A malformed terminated line raises.
+    """
+    text = path.read_text()
+    lines = text.split("\n")[:-1]  # the last segment is either "" or an unterminated tail
     records = []
-    lines = path.read_text().splitlines()
     for i, line in enumerate(lines):
         if not line.strip():
             continue
         try:
             records.append(json.loads(line))
         except json.JSONDecodeError:
-            if i == len(lines) - 1:
-                continue  # incomplete tail of an interrupted append
             raise ValueError(f"{path}:{i + 1}: malformed record") from None
     return records
 
