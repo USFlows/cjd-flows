@@ -268,10 +268,12 @@ class RadialFlowEvaluator:
         if math.isinf(self.p):
             g = np.random.uniform(-1.0, 1.0, size=(n, d))
             return g / np.abs(g).max(axis=1, keepdims=True)
-        # i.i.d. coordinates with density proportional to exp(-|x|^p), normalized
-        g = np.random.gamma(1.0 / self.p, 1.0, size=(n, d)) ** (1.0 / self.p)
-        g *= np.random.choice([-1.0, 1.0], size=(n, d))
-        return g / (np.abs(g) ** self.p).sum(axis=1, keepdims=True) ** (1.0 / self.p)
+        # i.i.d. coordinates x_i with density proportional to exp(-|x|^p), so
+        # |x_i|^p = G_i ~ Gamma(1/p); x / ||x||_p = sign * (G_i / sum G)^(1/p)
+        # stays in [-1, 1] (no overflow for small p)
+        g = np.random.gamma(1.0 / self.p, 1.0, size=(n, d))
+        log_ratio = np.log(g) - np.log(g.sum(axis=1, keepdims=True))
+        return np.random.choice([-1.0, 1.0], size=(n, d)) * np.exp(log_ratio / self.p)
 
     @staticmethod
     def _bin_index(directions, n_bins):
@@ -288,9 +290,14 @@ class RadialFlowEvaluator:
         Returns ``(hsic, p_value)``.
         """
         norms = torch.linalg.vector_norm(self.latents, ord=self.p, dim=1).unsqueeze(1)
+        if not (torch.isfinite(norms).all() and (norms > 0).all()):
+            raise ValueError("HSIC test needs finite, nonzero latent norms (a latent lies at the centre)")
         directions = self.latents / norms
-        norms = (norms - norms.mean()) / norms.std()
-        directions = (directions - directions.mean(dim=0)) / directions.std(dim=0)
+        norm_std, dir_std = norms.std(), directions.std(dim=0)
+        if not (torch.isfinite(norm_std) and norm_std > 0 and torch.isfinite(dir_std).all() and (dir_std > 0).all()):
+            raise ValueError("HSIC test needs non-constant latent norms and direction coordinates")
+        norms = (norms - norms.mean()) / norm_std
+        directions = (directions - directions.mean(dim=0)) / dir_std
         K_n = self._rbf_kernel(norms)
         K_d = self._rbf_kernel(directions)
         n = len(norms)
