@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cjd-flows"
-version = "1.0.0.dev0"
+version = "1.0.0"
 description = "Stable uniformly scaling normalizing flows with constant Jacobian determinant and radial base distributions."
 readme = "README.md"
 requires-python = ">=3.11"
