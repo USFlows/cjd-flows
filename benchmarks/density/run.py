@@ -1,7 +1,11 @@
-"""CPU density-estimation benchmarks (toy 2-D, asymmetric GMM, MAF tabular suite).
+"""Density-estimation benchmarks (toy 2-D, asymmetric GMM, MAF tabular suite).
 
 Runs a grid of (dataset x base x coupling x seed) configurations in a process
-pool and appends one JSON record per run to ``<out>/results.jsonl``.
+pool and appends one JSON record per run to ``<out>/results.jsonl``. Runs on the
+CPU by default; ``--device cuda`` trains on a GPU, with every pool worker its own
+GPU process (keep ``--workers`` small). The device is not part of a run's
+identity: a sweep can be resumed on another device, and ``meta.device`` records
+where each run happened.
 
 Suites: ``toy`` (bases x couplings), ``arch`` (couplings x mixing layers, incl. the
 affine reference without constant determinant), ``tabular`` (MAF suite: additive,
@@ -11,6 +15,7 @@ Usage::
 
     PYTHONPATH=src:. python benchmarks/density/run.py --suite toy --workers 8
     PYTHONPATH=src:. python benchmarks/density/run.py --suite tabular --workers 8
+    PYTHONPATH=src:. python benchmarks/density/run.py --suite tabular --workers 2 --device cuda
 """
 
 from __future__ import annotations
@@ -24,9 +29,6 @@ import os
 import time
 import traceback
 from pathlib import Path
-
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
-os.environ.setdefault("HIP_VISIBLE_DEVICES", "")
 
 
 def _average_ranks(a):
@@ -96,16 +98,17 @@ def build_model(spec, D):
     return USFlow((D,), coupling=coupling, **common)
 
 
-def run_one(spec, meta=None) -> dict:
+def run_one(spec, meta=None, device="cpu") -> dict:
     import torch
 
     torch.set_num_threads(spec.get("threads", 4))
-    from benchmarks.common import count_parameters, run_metadata
+    from benchmarks.common import count_parameters, device_name, run_metadata
     from cjd_flows.train import evaluate_nll, fit
 
     rec = dict(spec)
     # captured once at the start of the sweep (the checkout may change while it runs)
-    rec["meta"] = meta if meta is not None else run_metadata("cpu")
+    # device resolved here, in the worker: the sweep's parent process stays off the GPU
+    rec["meta"] = {**meta, "device": device_name(device)} if meta is not None else run_metadata(device)
     try:
         t0 = time.time()
         tr, va, te, exact = load_data(spec)
@@ -119,10 +122,11 @@ def run_one(spec, meta=None) -> dict:
         res = fit(
             flow, tr, va, epochs=epochs, max_steps=steps, batch_size=bs, lr=spec.get("lr", 1e-3),
             weight_decay=spec.get("weight_decay", 0.0), ema_decay=0.999, grad_clip=5.0,
-            device="cpu", restore="best", val_batch_size=8192,
+            device=device, restore="best", val_batch_size=8192,
         )
         flow.eval()
-        rec["test_nll"] = float(evaluate_nll(flow, te, batch_size=8192, device="cpu"))
+        rec["test_nll"] = float(evaluate_nll(flow, te, batch_size=8192, device=device))
+        flow.to("cpu")  # the alignment statistics below compare with CPU reference densities
         rec["best_val_nll"] = float(res.best_val_loss) if res.best_val_loss is not None else None
         rec["steps_done"] = res.steps
         # convergence check: best epoch vs epochs run, and the validation curve
@@ -218,7 +222,12 @@ def main():
     ap.add_argument("--couplings", nargs="+", default=None, help="restrict coupling types")
     ap.add_argument("--steps-scale", type=float, default=1.0, help="multiply the step budget")
     ap.add_argument("--threads", type=int, default=None, help="torch threads per worker")
+    ap.add_argument("--device", default="cpu",
+                    help="training device, e.g. cpu or cuda (each worker is one GPU process; keep --workers small)")
     args = ap.parse_args()
+    if args.device == "cpu":  # keep CPU workers from initialising a GPU runtime (inherited by the pool)
+        os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+        os.environ.setdefault("HIP_VISIBLE_DEVICES", "")
 
     if args.suite == "toy":
         specs = toy_grid(args.seeds)
@@ -251,24 +260,24 @@ def main():
     def resume_key(d):
         return json.dumps({k: d.get(k, defaults.get(k)) for k in keys}, sort_keys=True)
 
+    from benchmarks.common import drop_incomplete_tail, read_records, run_metadata
+
     done = set()
     res_file = out / "results.jsonl"
     if res_file.exists():
-        for line in res_file.read_text().splitlines():
-            r = json.loads(line)
+        for r in read_records(res_file):
             if r.get("ok"):
                 done.add(resume_key(r))
     specs = [s for s in specs if resume_key(s) not in done]
     print(f"{len(specs)} runs to do", flush=True)
+    drop_incomplete_tail(res_file)  # an interrupted append; its run is redone
 
     import multiprocessing as mp
 
     ctx = mp.get_context("spawn")
-    from benchmarks.common import run_metadata
-
-    meta = run_metadata("cpu")  # source and hardware of the whole sweep
+    meta = run_metadata("cpu")  # source of the whole sweep; each worker fills in its device
     with ctx.Pool(args.workers) as pool, open(res_file, "a") as f:
-        for rec in pool.imap_unordered(functools.partial(run_one, meta=meta), specs):
+        for rec in pool.imap_unordered(functools.partial(run_one, meta=meta, device=args.device), specs):
             f.write(json.dumps(rec) + "\n")
             f.flush()
             msg = rec.get("error") or f"test_nll={rec.get('test_nll'):.4f} kl={rec.get('kl_estimate')}"

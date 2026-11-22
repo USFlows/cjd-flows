@@ -1,4 +1,4 @@
-"""Shared helpers for the benchmark scripts: run metadata and parameter counts.
+"""Shared helpers for the benchmark scripts: run metadata, parameter counts, result files.
 
 Every benchmark record carries ``meta = run_metadata()`` so that published
 tables can state exactly which library version, commit and hardware produced
@@ -7,6 +7,7 @@ them. No host or user names are recorded.
 
 from __future__ import annotations
 
+import json
 import platform
 import subprocess
 from datetime import UTC, datetime
@@ -73,3 +74,31 @@ def count_parameters(module) -> int:
             seen.add(id(p))
             n += p.numel()
     return n
+
+
+def read_records(path) -> list:
+    """Complete JSON records of a results file.
+
+    Only newline-terminated lines count as complete: an unterminated last line
+    (interrupted append) is ignored, so its run is redone. A malformed terminated
+    line raises.
+    """
+    lines = Path(path).read_text().split("\n")[:-1]  # the last segment is "" or an unterminated tail
+    records = []
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            raise ValueError(f"{path}:{i + 1}: malformed record") from None
+    return records
+
+
+def drop_incomplete_tail(path) -> None:
+    """Truncate an unterminated last line, so the next append starts a fresh record."""
+    path = Path(path)
+    if path.exists():
+        data = path.read_bytes()
+        if data and not data.endswith(b"\n"):
+            path.write_bytes(data[: data.rfind(b"\n") + 1])

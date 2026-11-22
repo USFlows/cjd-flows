@@ -25,8 +25,10 @@ def test_spearman_undefined_for_constant_input():
 def test_run_one_records_convergence_information():
     spec = dict(dataset="two_moons", base="gaussian", coupling="additive", mixing="lu", seed=0, blocks=2,
                 hidden=[16], steps=40, batch_size=256, threads=1)
-    rec = run.run_one(spec, meta={})
+    rec = run.run_one(spec, meta={"git_commit": "abc"})
     assert rec["ok"], rec.get("error")
+    # the sweep's metadata is kept; the device is filled in by the worker
+    assert rec["meta"]["git_commit"] == "abc" and rec["meta"]["device"]
     assert rec["epochs_run"] >= 1 and 1 <= rec["best_epoch"] <= rec["epochs_run"]
     assert len(rec["val_curve"]) == rec["epochs_run"]
     assert min(rec["val_curve"]) == pytest.approx(rec["best_val_nll"])
