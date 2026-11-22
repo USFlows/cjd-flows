@@ -52,7 +52,7 @@ docs = [
 [project.urls]
 Homepage = "https://github.com/USFlows/cjd-flows"
 Repository = "https://github.com/USFlows/cjd-flows"
-Documentation = "https://github.com/USFlows/cjd-flows/tree/main/docs"
+Documentation = "https://usflows.github.io/cjd-flows/"
 Issues = "https://github.com/USFlows/cjd-flows/issues"
 Changelog = "https://github.com/USFlows/cjd-flows/blob/main/CHANGELOG.md"
 

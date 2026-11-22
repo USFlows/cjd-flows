@@ -26,6 +26,10 @@ the latent level-set geometry intact.
 
 ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
 ![ONNX](https://img.shields.io/badge/ONNX-005CED?logo=onnx&logoColor=white)
+[![Docs](https://github.com/USFlows/cjd-flows/actions/workflows/docs.yml/badge.svg)](https://usflows.github.io/cjd-flows/)
+
+**Documentation:** <https://usflows.github.io/cjd-flows/> (API reference and
+tutorials).
 
 ## Installation
 

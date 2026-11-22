@@ -1,0 +1,65 @@
+name: docs
+
+# Builds the Sphinx documentation (warnings are errors) on every pull request
+# and deploys it to GitHub Pages on pushes to main.
+#
+# One-time setup (repository settings): Settings -> Pages -> Build and
+# deployment -> Source: "GitHub Actions". Until then the deploy job fails on
+# main; the build job is unaffected.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # CPU torch wheels (avoids the multi-GB CUDA wheels on the runners).
+  UV_TORCH_BACKEND: cpu
+  FORCE_COLOR: "1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install (docs, eval and onnx extras, CPU torch)
+        run: |
+          uv venv
+          uv pip install -e ".[docs,eval,onnx]"
+      - name: Build HTML (warnings are errors)
+        run: uv run --no-sync sphinx-build -W --keep-going -b html docs docs/_build/html
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_build/html
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

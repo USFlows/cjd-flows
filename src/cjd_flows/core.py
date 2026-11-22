@@ -62,7 +62,7 @@ class Bijection(nn.Module):
     Subclasses implement :meth:`forward`, :meth:`inverse` and (if the
     determinant is not one) :meth:`log_abs_det`.
 
-    Class attributes:
+    Attributes:
         piecewise_affine: ``True`` if the map is piecewise affine provided its
             conditioner networks are piecewise affine (e.g. ReLU MLPs/CNNs).
             Such flows admit exact SMT/MILP encodings.
