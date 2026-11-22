@@ -184,6 +184,9 @@ def main():
         print(f"[{name}] skipped (listed in {skip_file})", flush=True)
         return
     out.mkdir(parents=True, exist_ok=True)
+    from benchmarks.common import run_metadata
+
+    meta = run_metadata(str(device))  # before training: the checkout may change during a long run
     (out / "args.json").write_text(json.dumps(vars(args), indent=2))
 
     # TensorBoard is optional: metrics.jsonl and the PNG grids are the primary outputs
@@ -257,7 +260,6 @@ def main():
         return 0.5 * (1 + math.cos(math.pi * min(1.0, t)))
 
     step, t0, bad = 0, time.time(), 0
-    best = float("inf")
     run_loss = []
     while step < total:
         perm = torch.randperm(len(xtr_dev), device=device)
@@ -317,10 +319,9 @@ def main():
                 log(step, **rec)
                 print(f"[{name}] step {step}/{total} ep {step/steps_per_epoch:.1f} test_bpd {tbpd:.4f} "
                       f"({(time.time()-t0)/60:.1f} min)", flush=True)
-                if tbpd < best:
-                    best = tbpd
                 torch.save({"model": model.state_dict(), "args": vars(args), "step": step}, out / "model.pt")
-    final = {"final_test_bpd": tbpd, "best_test_bpd_subset": best, "minutes": (time.time() - t0) / 60, "params": n_params}
+    # no selection on the test split: report the final model only
+    final = {"final_test_bpd": tbpd, "minutes": (time.time() - t0) / 60, "params": n_params, "meta": meta}
     (out / "final.json").write_text(json.dumps(final, indent=2))
     print(f"[{name}] DONE {final}", flush=True)
 

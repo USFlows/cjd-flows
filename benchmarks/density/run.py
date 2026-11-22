@@ -12,6 +12,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import functools
 import itertools
 import json
 import math
@@ -60,14 +61,17 @@ def load_data(spec):
     return tr, va, te, None
 
 
-def run_one(spec) -> dict:
+def run_one(spec, meta=None) -> dict:
     import torch
 
     torch.set_num_threads(spec.get("threads", 4))
+    from benchmarks.common import count_parameters, run_metadata
     from cjd_flows.models import USFlow
     from cjd_flows.train import evaluate_nll, fit
 
     rec = dict(spec)
+    # captured once at the start of the sweep (the checkout may change while it runs)
+    rec["meta"] = meta if meta is not None else run_metadata("cpu")
     try:
         t0 = time.time()
         tr, va, te, exact = load_data(spec)
@@ -83,7 +87,7 @@ def run_one(spec) -> dict:
             p=spec.get("p", 2.0),
             n_components=spec.get("n_components", 4),
         )
-        rec["params"] = sum(p.numel() for p in flow.parameters())
+        rec["params"] = count_parameters(flow)
         steps = spec["steps"]
         bs = spec.get("batch_size", 512)
         epochs = max(1, math.ceil(steps * bs / len(tr)))
@@ -199,8 +203,11 @@ def main():
     import multiprocessing as mp
 
     ctx = mp.get_context("spawn")
+    from benchmarks.common import run_metadata
+
+    meta = run_metadata("cpu")  # source and hardware of the whole sweep
     with ctx.Pool(args.workers) as pool, open(res_file, "a") as f:
-        for rec in pool.imap_unordered(run_one, specs):
+        for rec in pool.imap_unordered(functools.partial(run_one, meta=meta), specs):
             f.write(json.dumps(rec) + "\n")
             f.flush()
             msg = rec.get("error") or f"test_nll={rec.get('test_nll'):.4f} kl={rec.get('kl_estimate')}"
