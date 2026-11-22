@@ -233,8 +233,10 @@ class RadialFlowEvaluator:
         measure on the Lp unit sphere (the direction law of every Lp-radial
         distribution), estimated from ``n_reference`` exact simulations
         (default ``max(100_000, 50 N)``). Cells with an expected count below 5
-        are pooled. Only meaningful for low dimensions (``n_bins ** dim``
-        cells). Returns ``(chi2, p_value)``.
+        are pooled, and the statistic is divided by ``1 + N / n_reference``
+        to account for the Monte-Carlo error of the reference. Only
+        meaningful for low dimensions (``n_bins ** dim`` cells). Returns
+        ``(chi2, p_value)``.
         """
         total_bins = n_bins**self.dim
         if total_bins > 2**62:
@@ -262,7 +264,8 @@ class RadialFlowEvaluator:
                 expected[-1] = n / n_reference
         if len(expected) < 2:
             raise ValueError("Too few populated cells for a chi-squared test; use more data or fewer bins")
-        chi2_stat = np.sum((observed - expected) ** 2 / expected)
+        # the expected counts are Monte-Carlo estimates: Var(O - E) = n p (1 + n / M)
+        chi2_stat = np.sum((observed - expected) ** 2 / expected) / (1.0 + n / n_reference)
         p_value = 1 - chi2.cdf(chi2_stat, df=len(expected) - 1)
         return chi2_stat, p_value
 
