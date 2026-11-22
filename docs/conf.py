@@ -16,7 +16,7 @@ import cjd_flows  # noqa: E402
 # -- Project information -----------------------------------------------------
 
 project = "CJD-Flows"
-copyright = "2023, Transferlab, appliedAI Institute for Europe"
+copyright = "2023–2026, the USFlows contributors; originally developed at the TransferLab, appliedAI Institute for Europe"
 author = "Faried Abu Zaid"
 release = cjd_flows.__version__
 version = ".".join(release.split(".")[:2])
