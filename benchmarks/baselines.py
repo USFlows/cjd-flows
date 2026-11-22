@@ -57,6 +57,11 @@ class VariableDetFlow(Flow):
     """Flow that also accumulates per-sample log-determinants (for the affine reference)."""
 
     def log_prob(self, x: Tensor, context: Optional[Tensor] = None) -> Tensor:
+        # several leading batch dimensions are flattened and restored, as in Flow.log_prob
+        batch_shape = x.shape[: x.dim() - len(self.event_shape)]
+        if len(batch_shape) != 1:
+            lp = self.log_prob(x.reshape(-1, *self.event_shape), context)
+            return lp.reshape(batch_shape)
         ctx = self._context(context, x.shape[0], x)
         ld = x.new_zeros(x.shape[0], dtype=torch.promote_types(x.dtype, torch.float32))
         z = x

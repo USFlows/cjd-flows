@@ -62,3 +62,11 @@ def test_half_precision_flow_keeps_fp32_log_density():
     lp = flow.log_prob(x)
     assert lp.dtype == torch.float32  # the fp32 log-determinant accumulator is not cast down
     assert torch.isfinite(lp).all()
+
+
+def test_affine_reference_multiple_batch_dimensions():
+    flow = _perturbed("lu", "gaussian")
+    x = torch.randn(2, 5, 3, dtype=torch.float64)
+    lp = flow.log_prob(x)
+    assert lp.shape == (2, 5)
+    assert torch.equal(lp, flow.log_prob(x.reshape(10, 3)).reshape(2, 5))
